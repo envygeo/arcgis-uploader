@@ -17,8 +17,9 @@ def test_proxy_header(client):
         headers={"X-Forwarded-User": "YG\\mwilkie"},
         project_id="2026-0042",
     )
-    assert attributes(response)["uploaded_by"] == "YG\\mwilkie"
+    assert attributes(response)["uploaded_by"] == "Uploaded by YG\\mwilkie."
     assert response.json()["uploaded_by"] == "YG\\mwilkie"
+    assert response.json()["username_attribute_value"] == "Uploaded by YG\\mwilkie."
 
 
 def test_form_field_from_calling_app_outranks_header(client):
@@ -28,7 +29,7 @@ def test_form_field_from_calling_app_outranks_header(client):
         project_id="2026-0042",
         username="app-user@example.gov",
     )
-    assert attributes(response)["uploaded_by"] == "app-user@example.gov"
+    assert attributes(response)["uploaded_by"] == "Uploaded by app-user@example.gov."
 
 
 def test_form_field_ignored_when_disallowed():
@@ -39,7 +40,7 @@ def test_form_field_ignored_when_disallowed():
         project_id="2026-0042",
         username="spoofed",
     )
-    assert attributes(response)["uploaded_by"] == "proxy-user"
+    assert attributes(response)["uploaded_by"] == "Uploaded by proxy-user."
 
 
 def test_custom_header_name():
@@ -49,4 +50,17 @@ def test_custom_header_name():
         headers={"X-Remote-User": "iis-user"},
         project_id="2026-0042",
     )
-    assert attributes(response)["uploaded_by"] == "iis-user"
+    assert attributes(response)["uploaded_by"] == "Uploaded by iis-user."
+
+
+def test_custom_username_field_gets_uploaded_by_sentence():
+    client = make_client(username_field="Note")
+    response = post_file(
+        client,
+        "/api/upload",
+        geojson_bytes(),
+        "data.geojson",
+        project_id="2026-0042",
+        username="app-user",
+    )
+    assert attributes(response)["Note"] == "Uploaded by app-user."

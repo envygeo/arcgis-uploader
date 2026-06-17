@@ -97,18 +97,21 @@ def test_preview_truncates_map_but_counts_everything(client, monkeypatch):
 def test_preview_resolves_username_like_upload_does(client):
     body = preview(client, geojson_bytes(), "data.geojson").json()
     assert body["uploaded_by"] == "unknown"
+    assert body["username_attribute_value"] == "Uploaded by unknown."
 
     response = post_file(
         client, "/api/preview", geojson_bytes(), "data.geojson",
         headers={"X-Forwarded-User": "YG\\someone"},
     )
     assert response.json()["uploaded_by"] == "YG\\someone"
+    assert response.json()["username_attribute_value"] == "Uploaded by YG\\someone."
 
     response = post_file(
         client, "/api/preview", geojson_bytes(), "data.geojson",
         username="app-user",
     )
     assert response.json()["uploaded_by"] == "app-user"
+    assert response.json()["username_attribute_value"] == "Uploaded by app-user."
 
 
 def test_preview_rejects_non_spatial(client):

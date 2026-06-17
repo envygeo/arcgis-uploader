@@ -76,7 +76,7 @@ JS: gdal-async).
    attributes, normalize dimensions, reproject to the layer's spatial reference, convert
    to Esri JSON observing the geometry rules listed under
    [How it works](#how-it-works). Attributes of every output feature are just
-   `{ "<project_id_field>": "<form value>", "<username_field>": "<user>" }`
+   `{ "<project_id_field>": "<form value>", "<username_field>": "Uploaded by <user>." }`
    plus `DUPLICATE_ID_FIELD` when that is a separate field. For shapefile
    uploads, set GDAL's `SHAPE_RESTORE_SHX=YES` if you want to tolerate missing
    `.shx` index files.
@@ -98,7 +98,7 @@ A feature posted to `addFeatures` looks like:
 ```json
 {
   "geometry": { "rings": [[[ -135.1, 60.7 ], ...]], "spatialReference": { "wkid": 4326 } },
-  "attributes": { "project_id": "2026-0042", "uploaded_by": "YG\\mwilkie" }
+  "attributes": { "project_id": "2026-0042", "uploaded_by": "Uploaded by YG\\mwilkie." }
 }
 ```
 
@@ -214,6 +214,7 @@ Successful response (`200`):
 {
   "project_id": "2026-0042",
   "uploaded_by": "YG\\mwilkie",
+  "username_attribute_value": "Uploaded by YG\\mwilkie.",
   "layers_read": ["upload.zip:roads", "upload.zip:sites"],
   "features_appended": { "point": 12, "line": 340 },
   "features_skipped_no_target_layer": { "polygon": 2 },
@@ -225,8 +226,9 @@ Successful response (`200`):
 ### Who did the upload?
 
 Every appended feature carries a second attribute, `USERNAME_FIELD`
-(default `uploaded_by`). Browser JavaScript cannot read the OS username, so
-the value is resolved server-side, in order of preference:
+(default `uploaded_by`). Its value is written as
+`Uploaded by {username}.` Browser JavaScript cannot read the OS username, so
+`{username}` is resolved server-side, in order of preference:
 
 1. the **`username` form field** — for third-party apps using this API that
    already authenticated their user (a MudBlazor port would send
@@ -235,9 +237,16 @@ the value is resolved server-side, in order of preference:
    client sends can be spoofed from dev tools.
 2. the **`USERNAME_HEADER` request header** (default `X-Forwarded-User`),
    set by the SSO/reverse proxy in front of the app (IIS Windows
-   Authentication, oauth2-proxy, …). The bundled example forms rely on
-   this. Only trust it when the app is reachable solely through that proxy.
+   Authentication, oauth2-proxy, …). Only trust it when the app is reachable
+   solely through that proxy.
 3. the literal `"unknown"` — bare development runs.
+
+The bundled example forms include a typable `username` field as a simple
+intranet/development workaround. In a real host application, do not ask the
+user to type it if you need reliable attribution: populate the field from the
+already-authenticated app user (for example `User.Identity.Name`) or use the
+trusted reverse-proxy header path above. A user-editable field is convenient,
+but it is not an audit control.
 
 Each upload is also written to the server log:
 `appended: user=... project=... file=... appended=...`.
@@ -278,16 +287,17 @@ username  optional — same resolution as /api/upload
   "features_skipped_invalid": 0,
   "geojson": { "type": "FeatureCollection", "features": ["… in EPSG:4326 …"] },
   "geojson_truncated": false,
-  "uploaded_by": "YG\\mwilkie"
+  "uploaded_by": "YG\\mwilkie",
+  "username_attribute_value": "Uploaded by YG\\mwilkie."
 }
 ```
 
 `rows` holds at most the first 5 attribute rows per layer — show them to the
 user as *what will be removed*, visually distinct from what will be *added*
-(the project ID plus `uploaded_by`, which the preview resolves the same way
-as the upload so the page can display it up front). The bundled page renders
-one combined table per layer — added columns left-most in green, existing
-columns in red with struck-through headers — and shows the map and a
+(the project ID plus `username_attribute_value`, which the preview resolves
+the same way as the upload so the page can display it up front). The bundled
+page renders one combined table per layer — added columns left-most in green,
+existing columns in red with struck-through headers — and shows the map and a
 skeleton of that table, muted, before any file is chosen. `geojson` is ready for any web map and is
 capped at 2 000 features (`geojson_truncated` tells you the map is partial;
 the append still gets everything). Nothing is stored server-side between the

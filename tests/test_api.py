@@ -29,7 +29,7 @@ def test_attributes_are_stripped_and_project_id_assigned(client):
     body = upload(client, geojson_bytes(), "data.geojson").json()
     assert body["sample_feature"]["attributes"] == {
         "project_id": "2026-0042",
-        "uploaded_by": "unknown",  # no proxy header, no username field
+        "uploaded_by": "Uploaded by unknown.",  # no proxy header, no username field
     }
 
 
@@ -119,6 +119,7 @@ def test_append_adds_default_z_for_target_layer_with_z():
 
     assert result["features_appended"] == {"polygon": 1}
     geometry = client.features[0]["geometry"]
+    assert client.features[0]["attributes"]["uploaded_by"] == "Uploaded by tester."
     assert geometry["hasZ"] is True
     ring = geometry["rings"][0]
     assert all(len(vertex) == 3 for vertex in ring)

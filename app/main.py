@@ -29,6 +29,10 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 logger = logging.getLogger("arcgis-uploader")
 
+USERNAME_ATTRIBUTE_PREFIX = "Uploaded by "
+USERNAME_ATTRIBUTE_SUFFIX = "."
+USERNAME_ATTRIBUTE_MAX_LEN = 128
+
 
 class DuplicateAppendError(ValueError):
     """The upload would duplicate an existing id + Shape; safe to show."""
@@ -86,7 +90,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(422, str(exc)) from exc
         # So the page can show the attributes that WILL be added, not just
         # the ones removed.
-        result["uploaded_by"] = _resolve_username(request, username, settings)
+        resolved_username = _resolve_username(request, username, settings)
+        result["uploaded_by"] = resolved_username
+        result["username_attribute_value"] = _username_attribute_value(
+            resolved_username
+        )
         return result
 
     @app.post("/api/upload")
@@ -147,14 +155,27 @@ def _resolve_username(
        ALLOW_CLIENT_USERNAME=false to ignore it (e.g. when browsers can
        reach the API directly and callers cannot be trusted).
     2. the USERNAME_HEADER set by the SSO/reverse proxy in front of this
-       app — what the bundled example forms rely on; browser code cannot
-       supply the OS username itself.
+       app; browser code cannot supply the OS username itself.
     3. "unknown" — bare development runs.
     """
     if settings.allow_client_username and form_value and form_value.strip():
         return form_value.strip()[:128]
     header_value = (request.headers.get(settings.username_header) or "").strip()
     return header_value[:128] or "unknown"
+
+
+def _username_attribute_value(username: str) -> str:
+    """Value written to USERNAME_FIELD on the target layer."""
+    max_username_len = (
+        USERNAME_ATTRIBUTE_MAX_LEN
+        - len(USERNAME_ATTRIBUTE_PREFIX)
+        - len(USERNAME_ATTRIBUTE_SUFFIX)
+    )
+    return (
+        USERNAME_ATTRIBUTE_PREFIX
+        + username[:max_username_len]
+        + USERNAME_ATTRIBUTE_SUFFIX
+    )
 
 
 def _receive_upload(file: UploadFile, workdir: Path, max_mb: int) -> Path:
@@ -193,6 +214,7 @@ def _append(
     appended: dict[str, int] = {}
     skipped_no_target: dict[str, int] = {}
     sample_feature: dict | None = None
+    username_attribute = _username_attribute_value(username)
 
     for esri_type, series_list in buckets.by_family.items():
         label = FAMILY_LABELS[esri_type]
@@ -203,7 +225,7 @@ def _append(
             # example runs end-to-end with no Enterprise instance.
             attributes = {
                 settings.project_id_field: project_id,
-                settings.username_field: username,
+                settings.username_field: username_attribute,
             }
             features = _build_features(series_list, esri_type, 4326, attributes)
             appended[label] = len(features)
@@ -221,7 +243,7 @@ def _append(
         resolved = client.validate_layer(layer_url, esri_type, required_fields)
         attributes = {
             resolved[settings.project_id_field]: project_id,
-            resolved[settings.username_field]: username,
+            resolved[settings.username_field]: username_attribute,
         }
         if settings.duplicate_detection and duplicate_id_field != settings.project_id_field:
             attributes[resolved[duplicate_id_field]] = project_id
@@ -254,6 +276,7 @@ def _append(
     result = {
         "project_id": project_id,
         "uploaded_by": username,
+        "username_attribute_value": username_attribute,
         "layers_read": buckets.layers,
         "features_appended": appended,
         "features_skipped_no_target_layer": skipped_no_target,

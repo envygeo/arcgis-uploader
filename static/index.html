@@ -10,6 +10,7 @@
       Content-Type: multipart/form-data
       fields:  file        (the spatial file)
                project_id  (text)
+               username    (text; normally filled by the host app)
 
   and render the JSON response documented in README.md. Everything else on
   this page is presentation.
@@ -162,6 +163,24 @@
                     />
                 </div>
 
+                <div style="display: grid; gap: 0.35rem">
+                    <label for="username">Username</label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        required
+                        placeholder="e.g. YG\\mwilkie"
+                        autocomplete="username"
+                    />
+                    <p class="hint">
+                        Example-only: in production, populate this from your
+                        authenticated app user (for example
+                        <code>User.Identity.Name</code>) or use a trusted proxy
+                        header. Client-sent values can be spoofed.
+                    </p>
+                </div>
+
                 <div
                     id="drop-zone"
                     tabindex="0"
@@ -238,6 +257,7 @@
                 const body = new FormData();
                 body.append("file", pickedFile);
                 body.append("project_id", $("project-id").value.trim());
+                body.append("username", $("username").value.trim());
 
                 const btn = $("submit-btn");
                 btn.disabled = true;
@@ -286,7 +306,7 @@
                 showResult(
                     true,
                     `Done — project ID <strong>${escapeHtml(data.project_id)}</strong>, ` +
-                        `recorded as <strong>${escapeHtml(data.uploaded_by)}</strong>:` +
+                        `recorded as <strong>${escapeHtml(data.username_attribute_value || data.uploaded_by)}</strong>:` +
                         "<ul>" +
                         lines.map((l) => `<li>${l}</li>`).join("") +
                         "</ul>",
