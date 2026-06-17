@@ -1,0 +1,407 @@
+<!doctype html>
+<!--
+  Example 2: preview-and-confirm client for the arcgis-uploader service.
+
+  Flow (two requests instead of example 1's one):
+
+    1. user picks a file        ->  POST /api/preview   (file only)
+       render: map of the geometries, first rows of the attribute table
+       (the attributes that will be REMOVED), feature counts
+    2. user confirms            ->  POST /api/upload    (file + project_id)
+
+  Nothing is stored server-side between the two calls — the browser simply
+  sends the same File object twice. A port to MudBlazor/Leaflet/React needs
+  only those two multipart POSTs; everything else here is presentation.
+
+  The map is Leaflet from a CDN. For an intranet deployment, download
+  leaflet.js/leaflet.css into static/ and change the two URLs below.
+  BASEMAP_URL (optional, via /api/info) is an XYZ tile template; an ArcGIS
+  tiled MapServer works directly:  .../MapServer/tile/{z}/{y}/{x}
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project geometry uploader — preview</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --accent: #1c6e8c;
+      --border: #cfd8dc;
+      --ok-bg: #e8f5e9;  --ok-edge: #2e7d32;
+      --err-bg: #fdecea; --err-edge: #c62828;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, "Segoe UI", sans-serif;
+      color: #263238;
+      background: #f5f7f8;
+    }
+    main { max-width: 46rem; margin: 3rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.05rem; margin: 1.25rem 0 .5rem; }
+    .lede { color: #546e7a; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: grid;
+      gap: 1rem;
+    }
+    label { font-weight: 600; }
+    input[type="text"] {
+      font-size: 1rem;
+      padding: .5rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      color: #546e7a;
+    }
+    #drop-zone.dragover { border-color: var(--accent); background: #e3f2f7; }
+    #drop-zone p { margin: .25rem 0; }
+    .hint { font-size: .85rem; color: #78909c; }
+    button {
+      font-size: 1rem;
+      font-weight: 600;
+      border: 0;
+      border-radius: 6px;
+      padding: .65rem 1rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: wait; }
+    .primary { color: #fff; background: var(--accent); }
+    .secondary { color: var(--accent); background: #e3f2f7; }
+    #map { height: 340px; border-radius: 8px; background: #dde4e8; }
+    #preview { display: grid; gap: 1rem; }
+    /* Muted until a file is dropped; the layout never jumps. */
+    #preview.inactive { opacity: .55; filter: grayscale(35%); }
+    th.added, td.added { background: var(--ok-bg); }
+    th.added { color: var(--ok-edge); }
+    th.removed { text-decoration: line-through; color: var(--err-edge); background: var(--err-bg); }
+    td.removed { background: var(--err-bg); }
+    .placeholder { color: #78909c; font-style: italic; }
+    .legend-chip { padding: .1rem .5rem; border-radius: 4px; margin-right: .5rem; }
+    .legend-chip.added { background: var(--ok-bg); color: var(--ok-edge); }
+    .legend-chip.removed { background: var(--err-bg); color: var(--err-edge); text-decoration: line-through; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { padding: .35rem .6rem; border-bottom: 1px solid #eceff1; text-align: left; white-space: nowrap; }
+    th { background: #f5f7f8; position: sticky; top: 0; }
+    td.null { color: #b0bec5; }
+    #result {
+      margin-top: 1.5rem;
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      border-left: 4px solid;
+    }
+    #result.ok  { background: var(--ok-bg);  border-color: var(--ok-edge); }
+    #result.err { background: var(--err-bg); border-color: var(--err-edge); }
+    #result ul { margin: .5rem 0 0; padding-left: 1.25rem; }
+    .banner {
+      background: #fff8e1;
+      border: 1px solid #f9a825;
+      border-radius: 6px;
+      padding: .5rem .75rem;
+      font-size: .9rem;
+      margin-bottom: 1rem;
+    }
+    .actions { display: flex; gap: .75rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Project geometry uploader <span class="hint">example 2: preview &amp; confirm</span></h1>
+  <p class="lede">
+    Choose a spatial file to see its geometry and attributes before anything
+    is written. Attributes shown below are <strong>removed</strong> on upload —
+    features keep only your project ID and username.
+    <a href="./">Example 1: one-step form</a>
+  </p>
+
+  <div id="dry-run-banner" class="banner" hidden>
+    Dry-run mode: the pipeline runs but nothing is written to ArcGIS.
+  </div>
+
+  <div class="card">
+    <div style="display:grid; gap:.35rem;">
+      <label for="project-id">Project ID</label>
+      <input type="text" id="project-id" name="project_id" required
+             placeholder="e.g. 2026-0042" autocomplete="off">
+    </div>
+
+    <div id="drop-zone" tabindex="0" role="button"
+         aria-label="Choose a file or drop one here">
+      <p><strong>Drop a file here</strong> or click to browse</p>
+      <p id="accepted" class="hint"></p>
+      <p id="file-name" class="hint"></p>
+    </div>
+    <input type="file" id="file-input" hidden>
+
+    <section id="preview" class="inactive">
+      <div id="map"></div>
+      <p id="summary"></p>
+      <p class="hint">
+        <span class="legend-chip added">added on upload</span>
+        <span class="legend-chip removed">existing — removed</span>
+      </p>
+      <div id="tables"></div>
+      <div class="actions">
+        <button type="button" id="confirm-btn" class="primary" disabled>Confirm &amp; append</button>
+        <button type="button" id="reset-btn" class="secondary">Choose a different file</button>
+      </div>
+    </section>
+  </div>
+
+  <section id="result" hidden></section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const dropZone = $("drop-zone"), fileInput = $("file-input");
+  let pickedFile = null;
+  let serverInfo = null;
+  let map = null, geometryLayer = null;
+
+  fetch("api/info").then(r => r.json()).then(info => {
+    serverInfo = info;
+    $("accepted").textContent = "Accepted: " + info.accepted_extensions.join(", ");
+    fileInput.accept = info.accepted_extensions.join(",");
+    $("project-id").pattern = info.project_id_pattern.replace(/^\^|\$$/g, "");
+    $("dry-run-banner").hidden = !info.dry_run;
+    // The preview is visible (muted) from the start, so the user sees where
+    // everything will appear before choosing a file.
+    ensureMap();
+    renderEmptyState();
+  });
+
+  function ensureMap() {
+    if (map) return;
+    map = L.map("map").setView([63.5, -135.5], 4);  // adjust for your region
+    if (serverInfo && serverInfo.basemap_url)
+      L.tileLayer(serverInfo.basemap_url, { maxZoom: 19 }).addTo(map);
+  }
+
+  function renderEmptyState() {
+    $("summary").textContent =
+      "Drop a file above — its geometry appears on the map, its attributes here.";
+    const host = $("tables");
+    host.replaceChildren();
+    host.appendChild(buildTable(
+      ["existing attributes…"], [[null], [null]],
+      $("project-id").value.trim(), null,
+    ));
+  }
+
+  // ---- step 1: pick a file, request the preview --------------------------
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
+  fileInput.addEventListener("change", () => requestPreview(fileInput.files[0]));
+  ["dragover", "dragleave", "drop"].forEach(name =>
+    dropZone.addEventListener(name, (e) => {
+      e.preventDefault();
+      dropZone.classList.toggle("dragover", name === "dragover");
+    }));
+  dropZone.addEventListener("drop", (e) => requestPreview(e.dataTransfer.files[0]));
+
+  async function requestPreview(file) {
+    if (!file) return;
+    pickedFile = file;
+    $("file-name").textContent =
+      `${file.name} (${(file.size / 1048576).toFixed(1)} MB) — reading…`;
+    $("result").hidden = true;
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const response = await fetch("api/preview", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) {
+        resetPreview();
+        return showResult(false, data.detail || "Could not read the file.");
+      }
+      $("file-name").textContent = `${file.name} (${(file.size / 1048576).toFixed(1)} MB)`;
+      renderPreview(data);
+    } catch (err) {
+      resetPreview();
+      showResult(false, "Could not reach the server: " + err.message);
+    }
+  }
+
+  function renderPreview(data) {
+    $("preview").classList.remove("inactive");
+    $("confirm-btn").disabled = false;
+
+    ensureMap();
+    if (geometryLayer) geometryLayer.remove();
+    geometryLayer = L.geoJSON(data.geojson, {
+      style: { color: "#c62828", weight: 2, fillOpacity: 0.15 },
+      pointToLayer: (f, latlng) =>
+        L.circleMarker(latlng, { radius: 5, color: "#c62828", fillOpacity: 0.6 }),
+    }).addTo(map);
+    map.fitBounds(geometryLayer.getBounds().pad(0.1));
+
+    // Counts.
+    const counts = Object.entries(data.feature_counts)
+      .map(([type, n]) => `${n} ${type}`).join(", ");
+    let summary = `Will append: ${counts}.`;
+    if (data.features_skipped_invalid)
+      summary += ` ${data.features_skipped_invalid} empty/unsupported geometries will be skipped.`;
+    if (data.geojson_truncated)
+      summary += " (Map shows only the first " +
+        data.geojson.features.length + " features; all will be appended.)";
+    const allColumns = new Set(data.layers.flatMap(l => l.columns));
+    if (allColumns.size)
+      summary += ` ${allColumns.size} existing attribute column(s) will be removed.`;
+    $("summary").textContent = summary;
+    renderTables(data.layers, data.uploaded_by);
+  }
+
+  // One table per source layer, showing rows as they will exist after
+  // upload: the added columns left-most (green), then the existing columns
+  // that will be stripped (red, struck-through headers). Built with DOM
+  // methods (not innerHTML) because attribute values are arbitrary user data.
+  function renderTables(layers, uploadedBy) {
+    const host = $("tables");
+    host.replaceChildren();
+    const projectId = $("project-id").value.trim();
+    for (const layer of layers) {
+      const heading = document.createElement("h2");
+      heading.textContent = `${layer.layer} — ${layer.feature_count} feature(s)`;
+      host.appendChild(heading);
+      host.appendChild(buildTable(layer.columns, layer.rows, projectId, uploadedBy));
+      if (layer.feature_count > layer.rows.length) {
+        const more = document.createElement("p");
+        more.className = "hint";
+        more.textContent =
+          `… and ${layer.feature_count - layer.rows.length} more row(s)`;
+        host.appendChild(more);
+      }
+    }
+  }
+
+  // uploadedBy === null means "no file inspected yet" (the muted empty state).
+  function buildTable(columns, rows, projectId, uploadedBy) {
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    const table = document.createElement("table");
+
+    const head = table.createTHead().insertRow();
+    addCell(head, "th", "+ " + serverInfo.project_id_field, "added");
+    addCell(head, "th", "+ " + serverInfo.username_field, "added");
+    for (const column of columns) addCell(head, "th", column, "removed");
+
+    const tbody = table.createTBody();
+    for (const row of rows) {
+      const tr = tbody.insertRow();
+      setProjectCell(addCell(tr, "td", "", "added added-project-cell"), projectId);
+      addCell(tr, "td",
+              uploadedBy === null ? "(your username)" : uploadedBy,
+              uploadedBy === null ? "added placeholder" : "added");
+      for (const value of row)
+        addCell(tr, "td", value === null ? "—" : String(value),
+                value === null ? "removed null" : "removed");
+    }
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function addCell(row, tag, text, className) {
+    const cell = document.createElement(tag);
+    cell.textContent = text;
+    cell.className = className;
+    row.appendChild(cell);
+    return cell;
+  }
+
+  function setProjectCell(td, value) {
+    td.textContent = value || "(project ID)";
+    td.classList.toggle("placeholder", !value);
+  }
+
+  // The project ID column tracks the input live, in every table on the page.
+  $("project-id").addEventListener("input", () => {
+    const value = $("project-id").value.trim();
+    document.querySelectorAll(".added-project-cell")
+      .forEach(td => setProjectCell(td, value));
+  });
+
+  // ---- step 2: confirm — same request as example 1 ------------------------
+  $("confirm-btn").addEventListener("click", async () => {
+    const projectId = $("project-id").value.trim();
+    if (!projectId) {
+      $("project-id").focus();
+      return showResult(false, "Enter a project ID first.");
+    }
+    const body = new FormData();
+    body.append("file", pickedFile);
+    body.append("project_id", projectId);
+
+    const btn = $("confirm-btn");
+    btn.disabled = true;
+    btn.textContent = "Appending…";
+    try {
+      const response = await fetch("api/upload", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) return showResult(false, data.detail || "Upload failed.");
+      showSummary(data);
+    } catch (err) {
+      showResult(false, "Could not reach the server: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Confirm & append";
+    }
+  });
+
+  $("reset-btn").addEventListener("click", () => {
+    resetPreview();
+    fileInput.click();
+  });
+
+  function resetPreview() {
+    pickedFile = null;
+    fileInput.value = "";
+    $("file-name").textContent = "";
+    $("preview").classList.add("inactive");
+    $("confirm-btn").disabled = true;
+    if (geometryLayer) { geometryLayer.remove(); geometryLayer = null; }
+    if (serverInfo) renderEmptyState();
+  }
+
+  function showSummary(data) {
+    const lines = Object.entries(data.features_appended)
+      .map(([type, n]) => `${n} ${type} feature(s)` +
+                          (data.dry_run ? " (dry run — not written)" : " appended"));
+    for (const [type, n] of Object.entries(data.features_skipped_no_target_layer))
+      lines.push(`${n} ${type} feature(s) skipped — no target layer for this type`);
+    if (data.features_skipped_invalid)
+      lines.push(`${data.features_skipped_invalid} empty/unsupported geometries skipped`);
+    showResult(true,
+      `Done — project ID <strong>${escapeHtml(data.project_id)}</strong>, ` +
+      `recorded as <strong>${escapeHtml(data.uploaded_by)}</strong>:` +
+      "<ul>" + lines.map(l => `<li>${l}</li>`).join("") + "</ul>");
+  }
+
+  function showResult(ok, html) {
+    const box = $("result");
+    box.hidden = false;
+    box.className = ok ? "ok" : "err";
+    box.innerHTML = html;
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  }
+</script>
+</body>
+</html>
