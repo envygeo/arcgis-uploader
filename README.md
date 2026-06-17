@@ -54,7 +54,67 @@ Geometry handling rules (these matter to any port):
 - Esri ring winding is the **opposite** of GeoJSON: exterior rings clockwise,
   holes counter-clockwise.
 
-## Quick start (no ArcGIS required)
+## The ArcGIS recipe (porting the whole pipeline)
+
+The server side is five plain REST calls — no Esri SDK required in any
+language. GDAL/OGR (which did the file reading here) has bindings or
+equivalents on every platform (.NET: MaxRev.Gdal / NetTopologySuite;
+JS: gdal-async).
+
+1. **Get a token** — `POST {portal}/sharing/rest/generateToken` with
+   `username`, `password`, `client=referer`, `referer={portal}`,
+   `expiration=60`, `f=json` → `{ "token": "...", "expires": 1718... }`.
+   Cache it; refresh before `expires`.
+
+2. **Read the layer's schema** — `POST {layerUrl}?f=json&token=...` →
+   use `geometryType` to validate the target, `capabilities` to confirm
+   `Create`, `fields` to confirm the project-ID field exists, and
+   `extent.spatialReference.latestWkid` (fall back to `wkid`) as the
+   reprojection target.
+
+3. **Transform the features** — read the upload with GDAL/pyogrio, throw away all
+   attributes, normalize dimensions, reproject to the layer's spatial reference, convert
+   to Esri JSON observing the geometry rules listed under
+   [How it works](#how-it-works). Attributes of every output feature are just
+   `{ "<project_id_field>": "<form value>", "<username_field>": "<user>" }`
+   plus `DUPLICATE_ID_FIELD` when that is a separate field. For shapefile
+   uploads, set GDAL's `SHAPE_RESTORE_SHX=YES` if you want to tolerate missing
+   `.shx` index files.
+
+4. **Reject duplicates** — before appending, `POST {layerUrl}/query` with
+   `where=<duplicate_id_field> = '<form value>'`, `returnGeometry=true`,
+   and `outSR=<target wkid>`. Compare those Shapes with the outgoing Shapes
+   in a metre CRS; this implementation refuses the append when Hausdorff
+   distance is ≤ `DUPLICATE_TOLERANCE_M` (default 1 metre).
+
+5. **Append** — `POST {layerUrl}/addFeatures` with form fields
+   `features=<JSON array>`, `rollbackOnFailure=true`, `f=json`, `token=...`,
+   in chunks of ≤ 500 features. **Check errors twice**: ArcGIS returns most
+   failures inside an HTTP 200 body, either as a top-level `error` object or
+   as per-feature `{ "success": false }` entries in `addResults`.
+
+A feature posted to `addFeatures` looks like:
+
+```json
+{
+  "geometry": { "rings": [[[ -135.1, 60.7 ], ...]], "spatialReference": { "wkid": 4326 } },
+  "attributes": { "project_id": "2026-0042", "uploaded_by": "YG\\mwilkie" }
+}
+```
+
+## Production notes
+
+- The ArcGIS credential lives **server-side only**. Never call
+  `generateToken` from browser code — a client port still needs a backend
+  (or a pre-authorized proxy) holding the secret.
+- The example does no user authentication; put it behind your reverse proxy /
+  SSO and serve it over HTTPS.
+- `rollbackOnFailure=true` is per 500-feature chunk: a failure mid-upload can
+  leave earlier chunks committed. If that matters, load into a staging layer
+  and move features after full success.
+
+
+## Example quick start with reference implementation
 
 Requires Python ≥ 3.10. With [uv](https://docs.astral.sh/uv/):
 
@@ -240,62 +300,3 @@ from a CDN — vendor it into `static/` for intranet use), commented for
 porting. A MudBlazor client would use `MudFileUpload` +
 `HttpClient.PostAsync` with `MultipartFormDataContent` — the requests are
 the same.
-
-## The ArcGIS recipe (porting the whole pipeline)
-
-The server side is five plain REST calls — no Esri SDK required in any
-language. GDAL/OGR (which did the file reading here) has bindings or
-equivalents on every platform (.NET: MaxRev.Gdal / NetTopologySuite;
-JS: gdal-async).
-
-1. **Get a token** — `POST {portal}/sharing/rest/generateToken` with
-   `username`, `password`, `client=referer`, `referer={portal}`,
-   `expiration=60`, `f=json` → `{ "token": "...", "expires": 1718... }`.
-   Cache it; refresh before `expires`.
-
-2. **Read the layer's schema** — `POST {layerUrl}?f=json&token=...` →
-   use `geometryType` to validate the target, `capabilities` to confirm
-   `Create`, `fields` to confirm the project-ID field exists, and
-   `extent.spatialReference.latestWkid` (fall back to `wkid`) as the
-   reprojection target.
-
-3. **Transform the features** — read the upload with GDAL/pyogrio, throw away all
-   attributes, normalize dimensions, reproject to the layer's spatial reference, convert
-   to Esri JSON observing the geometry rules listed under
-   [How it works](#how-it-works). Attributes of every output feature are just
-   `{ "<project_id_field>": "<form value>", "<username_field>": "<user>" }`
-   plus `DUPLICATE_ID_FIELD` when that is a separate field. For shapefile
-   uploads, set GDAL's `SHAPE_RESTORE_SHX=YES` if you want to tolerate missing
-   `.shx` index files.
-
-4. **Reject duplicates** — before appending, `POST {layerUrl}/query` with
-   `where=<duplicate_id_field> = '<form value>'`, `returnGeometry=true`,
-   and `outSR=<target wkid>`. Compare those Shapes with the outgoing Shapes
-   in a metre CRS; this implementation refuses the append when Hausdorff
-   distance is ≤ `DUPLICATE_TOLERANCE_M` (default 1 metre).
-
-5. **Append** — `POST {layerUrl}/addFeatures` with form fields
-   `features=<JSON array>`, `rollbackOnFailure=true`, `f=json`, `token=...`,
-   in chunks of ≤ 500 features. **Check errors twice**: ArcGIS returns most
-   failures inside an HTTP 200 body, either as a top-level `error` object or
-   as per-feature `{ "success": false }` entries in `addResults`.
-
-A feature posted to `addFeatures` looks like:
-
-```json
-{
-  "geometry": { "rings": [[[ -135.1, 60.7 ], ...]], "spatialReference": { "wkid": 4326 } },
-  "attributes": { "project_id": "2026-0042", "uploaded_by": "YG\\mwilkie" }
-}
-```
-
-## Production notes
-
-- The ArcGIS credential lives **server-side only**. Never call
-  `generateToken` from browser code — a client port still needs a backend
-  (or a pre-authorized proxy) holding the secret.
-- The example does no user authentication; put it behind your reverse proxy /
-  SSO and serve it over HTTPS.
-- `rollbackOnFailure=true` is per 500-feature chunk: a failure mid-upload can
-  leave earlier chunks committed. If that matters, load into a staging layer
-  and move features after full success.
