@@ -172,9 +172,14 @@ class ArcGISClient:
                 for field in info.get("fields") or []
                 if field.get("name", "").lower() == field_name.lower()
             ),
-            {},
+            None,
         )
+        if field is None:
+            raise ArcGISError(
+                f"{info.get('name') or 'Layer'} has no '{field_name}' field."
+            )
         field_type = field.get("type")
+        exact_field_name = field.get("name")
         numeric_types = {
             "esriFieldTypeSmallInteger",
             "esriFieldTypeInteger",
@@ -188,9 +193,9 @@ class ArcGISClient:
             except ValueError:
                 pass
             else:
-                return f"{field_name} = {value}"
+                return f"{exact_field_name} = {value}"
         escaped = value.replace("'", "''")
-        return f"{field_name} = '{escaped}'"
+        return f"{exact_field_name} = '{escaped}'"
 
     # -- plumbing -----------------------------------------------------------------
     def _post(self, url: str, data: dict, with_token: bool = True) -> dict:

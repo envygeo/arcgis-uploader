@@ -44,12 +44,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="arcgis-uploader", description=__doc__)
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+    @app.get("/example1", include_in_schema=False)
+    def example1_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "example1.html")
 
     @app.get("/preview", include_in_schema=False)
-    def preview_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "preview.html")
+    @app.get("/example2", include_in_schema=False)
+    def example2_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "example2.html")
+
+    @app.get("/example3", include_in_schema=False)
+    def example3_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "example3.html")
 
     @app.get("/api/info")
     def info() -> dict:
@@ -68,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "duplicate_id_field": settings.duplicate_id_field
             or settings.project_id_field,
             "duplicate_tolerance_m": settings.duplicate_tolerance_m,
+            "duplicate_compare_layer_count": len(settings.duplicate_compare_layers),
         }
 
     @app.post("/api/preview")
@@ -256,20 +263,36 @@ def _append(
             has_z=client.layer_has_z(layer_url),
         )
         if settings.duplicate_detection:
+            existing_geometries = client.duplicate_geometries(
+                layer_url, resolved[duplicate_id_field], project_id, wkid
+            )
+            for compare_layer in settings.duplicate_compare_layers:
+                existing_geometries.extend(
+                    client.duplicate_geometries(
+                        compare_layer.url,
+                        compare_layer.id_field,
+                        project_id,
+                        wkid,
+                    )
+                )
             duplicate_count = count_duplicate_shapes(
                 features,
-                client.duplicate_geometries(
-                    layer_url, resolved[duplicate_id_field], project_id, wkid
-                ),
+                existing_geometries,
                 wkid,
                 settings.duplicate_tolerance_m,
             )
             if duplicate_count:
+                checked_layers = 1 + len(settings.duplicate_compare_layers)
+                checked = (
+                    "the target layer"
+                    if checked_layers == 1
+                    else f"{checked_layers} checked layer(s)"
+                )
                 raise DuplicateAppendError(
                     f"{duplicate_count} {label} feature(s) already exist with "
-                    f"{resolved[duplicate_id_field]}='{project_id}' and matching "
+                    f"id '{project_id}' and matching "
                     f"Shape within {settings.duplicate_tolerance_m:g} m; "
-                    "append refused."
+                    f"append refused after checking {checked}."
                 )
         appended[label] = client.add_features(layer_url, features)
 

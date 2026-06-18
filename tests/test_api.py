@@ -6,7 +6,7 @@ import geopandas as gpd
 import pytest
 from shapely.geometry import Point, Polygon
 
-from app.config import ESRI_POINT, ESRI_POLYGON, Settings
+from app.config import ESRI_POINT, ESRI_POLYGON, DuplicateCompareLayer, Settings
 from app.duplicates import count_duplicate_shapes
 from app.ingest import GeometryBuckets
 from app.main import DuplicateAppendError, _append
@@ -23,6 +23,20 @@ def test_geojson_upload_dry_run(client):
     body = response.json()
     assert body["features_appended"] == {"point": 1, "line": 1}
     assert body["dry_run"] is True
+
+
+def test_example_pages_exist(client):
+    pages = {
+        "/": "example 1: one-step form",
+        "/example1": "example 1: one-step form",
+        "/preview": "example 2: preview &amp; confirm",
+        "/example2": "example 2: preview &amp; confirm",
+        "/example3": "example 3: preview + duplicate check",
+    }
+    for path, expected in pages.items():
+        response = client.get(path)
+        assert response.status_code == 200
+        assert expected in response.text
 
 
 def test_attributes_are_stripped_and_project_id_assigned(client):
@@ -201,6 +215,72 @@ def test_append_refuses_duplicate_shape_with_same_id():
 
     with pytest.raises(DuplicateAppendError, match="append refused"):
         _append(buckets, "YESAB-123", "tester", settings, Client())
+
+
+def test_append_checks_duplicate_compare_layers_with_their_own_id_field():
+    compare_url = "https://example.test/FeatureServer/3"
+
+    class Client:
+        def validate_layer(self, layer_url, esri_type, required_fields):
+            assert layer_url == "https://example.test/target/0"
+            assert required_fields == ["YESAB_ID", "uploaded_by"]
+            return {name: name for name in required_fields}
+
+        def layer_wkid(self, layer_url):
+            return 4326
+
+        def layer_has_z(self, layer_url):
+            return False
+
+        def duplicate_geometries(self, layer_url, id_field, id_value, wkid):
+            assert id_value == "2026-0042"
+            if layer_url == "https://example.test/target/0":
+                assert id_field == "YESAB_ID"
+                return []
+            if layer_url == compare_url:
+                assert id_field == "attr_yesab_proj"
+                return [
+                    {
+                        "rings": [
+                            [[0.0, 0.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]
+                        ],
+                        "spatialReference": {"wkid": wkid},
+                    }
+                ]
+            raise AssertionError(f"unexpected duplicate layer: {layer_url}")
+
+        def add_features(self, layer_url, features):
+            raise AssertionError("duplicate features should not be appended")
+
+    settings = Settings(
+        portal_url="",
+        username="",
+        password="",
+        token_url="",
+        layer_urls={ESRI_POLYGON: "https://example.test/target/0"},
+        project_id_field="YESAB_ID",
+        project_id_pattern=r"^[\w][\w\- .]{0,63}$",
+        max_upload_mb=10,
+        default_source_epsg=None,
+        dry_run=False,
+        duplicate_detection=True,
+        duplicate_tolerance_m=1.0,
+        duplicate_compare_layers=(
+            DuplicateCompareLayer("attr_yesab_proj", compare_url),
+        ),
+    )
+    buckets = GeometryBuckets(
+        by_family={
+            ESRI_POLYGON: [
+                gpd.GeoSeries([Polygon([(0, 0), (1, 0), (1, 1)])], crs="EPSG:4326")
+            ]
+        },
+        layers=["input:areas"],
+        read=1,
+    )
+
+    with pytest.raises(DuplicateAppendError, match="2 checked layer"):
+        _append(buckets, "2026-0042", "tester", settings, Client())
 
 
 def test_bad_project_id_rejected(client):

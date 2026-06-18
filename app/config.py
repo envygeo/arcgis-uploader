@@ -4,6 +4,7 @@ See .env.example for documentation of every variable.
 """
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 
@@ -19,6 +20,19 @@ FAMILY_LABELS = {
     ESRI_POLYLINE: "line",
     ESRI_POLYGON: "polygon",
 }
+
+
+@dataclass(frozen=True)
+class DuplicateCompareLayer:
+    """A read-only layer to include in duplicate checks.
+
+    ``id_field`` is the field on that layer that should equal the submitted
+    project id. The target layer is checked separately through
+    ``DUPLICATE_ID_FIELD``.
+    """
+
+    id_field: str
+    url: str
 
 
 @dataclass(frozen=True)
@@ -47,6 +61,7 @@ class Settings:
     duplicate_detection: bool = True
     duplicate_id_field: str = ""
     duplicate_tolerance_m: float = 1.0
+    duplicate_compare_layers: tuple[DuplicateCompareLayer, ...] = ()
 
 
 def load_settings() -> Settings:
@@ -63,6 +78,10 @@ def load_settings() -> Settings:
             layer_urls[esri_type] = url
     default_epsg = os.environ.get("DEFAULT_SOURCE_EPSG", "").strip()
     project_id_field = os.environ.get("PROJECT_ID_FIELD", "project_id").strip()
+    compare_layers = (
+        os.environ.get("DUPLICATE_COMPARE_LAYERS", "").strip()
+        or os.environ.get("COMPARE_LAYERS", "").strip()
+    )
     return Settings(
         portal_url=portal,
         username=os.environ.get("ARCGIS_USERNAME", "").strip(),
@@ -89,4 +108,72 @@ def load_settings() -> Settings:
         duplicate_id_field=os.environ.get("DUPLICATE_ID_FIELD", project_id_field)
         .strip(),
         duplicate_tolerance_m=float(os.environ.get("DUPLICATE_TOLERANCE_M", "1.0")),
+        duplicate_compare_layers=parse_duplicate_compare_layers(compare_layers),
     )
+
+
+def parse_duplicate_compare_layers(value: str) -> tuple[DuplicateCompareLayer, ...]:
+    """Parse extra duplicate-check layers from env text.
+
+    Preferred format is JSON because it is unambiguous in a .env file:
+
+    [{"id_field":"attr_yesab_proj","url":"https://.../FeatureServer/3"}]
+
+    For operator convenience this also accepts the older sketch format of one
+    ``id_field, url`` pair per line.
+    """
+    value = value.strip()
+    if (
+        (value.startswith('"""') and value.endswith('"""'))
+        or (value.startswith("'''") and value.endswith("'''"))
+    ):
+        value = value[3:-3].strip()
+    if not value:
+        return ()
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return _parse_compare_layer_lines(value)
+
+    if not isinstance(parsed, list):
+        raise ValueError("DUPLICATE_COMPARE_LAYERS must be a JSON array.")
+
+    layers: list[DuplicateCompareLayer] = []
+    for index, item in enumerate(parsed, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"DUPLICATE_COMPARE_LAYERS item {index} must be an object."
+            )
+        id_field = str(item.get("id_field") or item.get("field") or "").strip()
+        url = str(item.get("url") or "").strip().rstrip("/")
+        if not id_field or not url:
+            raise ValueError(
+                "Each DUPLICATE_COMPARE_LAYERS item needs id_field and url."
+            )
+        layers.append(DuplicateCompareLayer(id_field=id_field, url=url))
+    return tuple(layers)
+
+
+def _parse_compare_layer_lines(value: str) -> tuple[DuplicateCompareLayer, ...]:
+    layers: list[DuplicateCompareLayer] = []
+    for line in value.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.endswith(","):
+            line = line[:-1].rstrip()
+        try:
+            id_field, url = line.split(",", 1)
+        except ValueError as exc:
+            raise ValueError(
+                "DUPLICATE_COMPARE_LAYERS lines must be 'id_field, url'."
+            ) from exc
+        id_field = id_field.strip().strip("'\"")
+        url = url.strip().strip("'\"").rstrip("/")
+        if not id_field or not url:
+            raise ValueError(
+                "DUPLICATE_COMPARE_LAYERS lines need both id_field and url."
+            )
+        layers.append(DuplicateCompareLayer(id_field=id_field, url=url))
+    return tuple(layers)

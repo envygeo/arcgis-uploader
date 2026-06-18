@@ -13,8 +13,9 @@ Two example clients are included:
 
 | | Page | Flow |
 |---|---|---|
-| **Example 1** | `/` ([static/index.html](static/index.html)) | one step: pick file → upload & append |
-| **Example 2** | `/preview` ([static/preview.html](static/preview.html)) | pick file → **preview map + attribute table** → confirm → append |
+| **Example 1** | `/` or `/example1` ([static/example1.html](static/example1.html)) | one step: pick file → upload & append |
+| **Example 2** | `/example2` or `/preview` ([static/example2.html](static/example2.html)) | pick file → **preview map + attribute table** → confirm → append |
+| **Example 3** | `/example3` ([static/example3.html](static/example3.html)) | example 2 flow, with duplicate checks against the polygon target **and** read-only compare layers |
 
 And two porting paths are documented below:
 
@@ -85,7 +86,9 @@ JS: gdal-async).
    `where=<duplicate_id_field> = '<form value>'`, `returnGeometry=true`,
    and `outSR=<target wkid>`. Compare those Shapes with the outgoing Shapes
    in a metre CRS; this implementation refuses the append when Hausdorff
-   distance is ≤ `DUPLICATE_TOLERANCE_M` (default 1 metre).
+   distance is ≤ `DUPLICATE_TOLERANCE_M` (default 1 metre). If
+   `DUPLICATE_COMPARE_LAYERS` is configured, query those read-only layers too,
+   using each layer's configured id field, before deciding whether to append.
 
 5. **Append** — `POST {layerUrl}/addFeatures` with form fields
    `features=<JSON array>`, `rollbackOnFailure=true`, `f=json`, `token=...`,
@@ -166,6 +169,7 @@ All settings come from environment variables or a `.env` file
 | `DUPLICATE_DETECTION` | `true` = refuse appends when the destination already has the same id field and Shape (default `true`) |
 | `DUPLICATE_ID_FIELD` | Field used for duplicate lookup. Defaults to `PROJECT_ID_FIELD`; set to `yesab_id` when that is the destination id field. If it differs from `PROJECT_ID_FIELD`, the form value is also written to this field. |
 | `DUPLICATE_TOLERANCE_M` | Shape comparison tolerance in metres (default `1.0`) |
+| `DUPLICATE_COMPARE_LAYERS` | Optional JSON array of extra read-only layers to check for duplicates. Each object has `id_field` and `url`. The target layer is still checked using `DUPLICATE_ID_FIELD`. |
 | `MAX_UPLOAD_MB` | Upload size cap (default 200) |
 | `SHAPE_RESTORE_SHX` | GDAL/pyogrio option. Set to `YES` to read shapefiles whose `.shx` index is missing by rebuilding the index. Included in `.env.example`. |
 | `DEFAULT_SOURCE_EPSG` | CRS assumed for uploads that have none (e.g. shapefile missing `.prj`). Unset = reject them. |
@@ -191,12 +195,21 @@ the target layer.
 - When duplicate detection is enabled, the target layer must also support
   `Query` and contain `DUPLICATE_ID_FIELD` (usually the same field as
   `PROJECT_ID_FIELD`, or `yesab_id`).
+- Any `DUPLICATE_COMPARE_LAYERS` must support `Query`, return geometry, and
+  contain their configured `id_field`. They do not need `Create` permission
+  because they are read-only duplicate sources.
 - Plain 2D layers are fine — Z/M are stripped before append. Layers with
   `hasZ=true` are also supported; 2D uploads receive a default Z of `0.0`.
 
-## The API contract (porting the client)
+## Example implementation pages and API contract
 
-An **example 1** style client needs exactly one request:
+The examples build on each other in this order:
+
+### Example 1: one-step upload and append
+
+Use `/` or `/example1` when the client should choose a file, enter a project
+ID, and append immediately. An Example 1 style client needs exactly one
+request:
 
 ```
 POST /api/upload
@@ -204,7 +217,7 @@ Content-Type: multipart/form-data
 
 file        the spatial file (.zip .gpkg .geojson .json .kml .fgb .shp)
 project_id  text, validated against PROJECT_ID_PATTERN
-username    optional — the calling app's authenticated user
+username    optional - the calling app's authenticated user
             (see "Who did the upload?" below)
 ```
 
@@ -223,57 +236,18 @@ Successful response (`200`):
 }
 ```
 
-### Who did the upload?
+### Example 2: preview, then confirm append
 
-Every appended feature carries a second attribute, `USERNAME_FIELD`
-(default `uploaded_by`). Its value is written as
-`Uploaded by {username}.` Browser JavaScript cannot read the OS username, so
-`{username}` is resolved server-side, in order of preference:
-
-1. the **`username` form field** — for third-party apps using this API that
-   already authenticated their user (a MudBlazor port would send
-   `User.Identity.Name`). Set `ALLOW_CLIENT_USERNAME=false` to ignore it —
-   do that when browsers can reach the API directly, because anything a
-   client sends can be spoofed from dev tools.
-2. the **`USERNAME_HEADER` request header** (default `X-Forwarded-User`),
-   set by the SSO/reverse proxy in front of the app (IIS Windows
-   Authentication, oauth2-proxy, …). Only trust it when the app is reachable
-   solely through that proxy.
-3. the literal `"unknown"` — bare development runs.
-
-The bundled example forms include a typable `username` field as a simple
-intranet/development workaround. In a real host application, do not ask the
-user to type it if you need reliable attribution: populate the field from the
-already-authenticated app user (for example `User.Identity.Name`) or use the
-trusted reverse-proxy header path above. A user-editable field is convenient,
-but it is not an audit control.
-
-Each upload is also written to the server log:
-`appended: user=... project=... file=... appended=...`.
-
-Errors return `{ "detail": "human-readable message" }` with:
-
-| Status | Meaning |
-|---|---|
-| `413` | File exceeds `MAX_UPLOAD_MB` |
-| `409` | Duplicate refused: same id field and Shape already exist in the destination |
-| `415` | File extension not accepted |
-| `422` | Bad project ID, unreadable/empty file, no spatial layers, or missing CRS |
-| `502` | ArcGIS Enterprise rejected a request (message says why) |
-
-`GET /api/info` returns what the form needs to configure itself — accepted
-extensions, the project-ID regex, configured geometry families, the size
-limit, the basemap URL, duplicate-detection settings, and whether dry-run is
-on. Interactive OpenAPI docs are at `/docs`.
-
-An **example 2** style client adds one more request before confirming:
+Use `/example2` or `/preview` when the client should show a map and attribute
+preview before appending. Example 2 adds one request before the Example 1
+`/api/upload` confirmation request:
 
 ```
 POST /api/preview
 Content-Type: multipart/form-data
 
 file      the spatial file (no project_id needed yet)
-username  optional — same resolution as /api/upload
+username  optional - same resolution as /api/upload
 ```
 
 ```json
@@ -285,28 +259,102 @@ username  optional — same resolution as /api/upload
   ],
   "feature_counts": { "line": 120 },
   "features_skipped_invalid": 0,
-  "geojson": { "type": "FeatureCollection", "features": ["… in EPSG:4326 …"] },
+  "geojson": { "type": "FeatureCollection", "features": ["... in EPSG:4326 ..."] },
   "geojson_truncated": false,
   "uploaded_by": "YG\\mwilkie",
   "username_attribute_value": "Uploaded by YG\\mwilkie."
 }
 ```
 
-`rows` holds at most the first 5 attribute rows per layer — show them to the
+`rows` holds at most the first 5 attribute rows per layer - show them to the
 user as *what will be removed*, visually distinct from what will be *added*
 (the project ID plus `username_attribute_value`, which the preview resolves
 the same way as the upload so the page can display it up front). The bundled
-page renders one combined table per layer — added columns left-most in green,
-existing columns in red with struck-through headers — and shows the map and a
-skeleton of that table, muted, before any file is chosen. `geojson` is ready for any web map and is
-capped at 2 000 features (`geojson_truncated` tells you the map is partial;
-the append still gets everything). Nothing is stored server-side between the
-two calls: on confirm, the client simply re-sends the same file to
-`/api/upload`. That keeps every port stateless; if your files are huge, cache
-the upload under a token server-side instead.
+page renders one combined table per layer - added columns left-most in green,
+existing columns in red with struck-through headers - and shows the map and a
+skeleton of that table, muted, before any file is chosen. `geojson` is ready
+for any web map and is capped at 2 000 features (`geojson_truncated` tells you
+the map is partial; the append still gets everything). Nothing is stored
+server-side between the two calls: on confirm, the client simply re-sends the
+same file to `/api/upload`. That keeps every port stateless; if your files are
+huge, cache the upload under a token server-side instead.
 
-The reference forms are dependency-free JavaScript (example 2 pulls Leaflet
-from a CDN — vendor it into `static/` for intranet use), commented for
+### Example 3: preview plus YESAB cross-layer duplicate checks
+
+Example 3 uses the `/example3` page and the same two-request flow as example 2.
+The difference is server-side configuration: when the user confirms, polygon
+appends are refused if the submitted project ID and Shape already exist in
+`TARGET_LAYER_POLYGON` **or** in the read-only YESAB project layers below.
+
+Use JSON for structured `.env` values rather than ad-hoc comma parsing:
+
+```dotenv
+TARGET_LAYER_POLYGON=https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/EA_Project_Areas3/FeatureServer/0
+PROJECT_ID_FIELD=YESAB_ID
+
+DUPLICATE_DETECTION=true
+  # Defaults to PROJECT_ID_FIELD, so the target layer check uses YESAB_ID.
+#DUPLICATE_ID_FIELD=YESAB_ID
+DUPLICATE_COMPARE_LAYERS=[{"id_field":"attr_yesab_proj","url":"https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/YESAB_Projects/FeatureServer/3"},{"id_field":"attr_yesab_proj","url":"https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/YESAB_Projects/FeatureServer/4"},{"id_field":"attr_yesab_proj","url":"https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/YESAB_Projects/FeatureServer/5"}]
+```
+
+On append, the duplicate guard checks:
+
+1. `TARGET_LAYER_POLYGON` where `YESAB_ID = <submitted project id>`
+2. `YESAB_Projects/FeatureServer/3` where `attr_yesab_proj = <submitted project id>`
+3. `YESAB_Projects/FeatureServer/4` where `attr_yesab_proj = <submitted project id>`
+4. `YESAB_Projects/FeatureServer/5` where `attr_yesab_proj = <submitted project id>`
+
+Any matching Shape within `DUPLICATE_TOLERANCE_M` metres returns `409` and no
+features are appended.
+
+### Shared detail: who did the upload?
+
+Every appended feature carries a second attribute, `USERNAME_FIELD`
+(default `uploaded_by`). Its value is written as
+`Uploaded by {username}.` Browser JavaScript cannot read the OS username, so
+`{username}` is resolved server-side, in order of preference:
+
+1. the **`username` form field** - for third-party apps using this API that
+   already authenticated their user (a MudBlazor port would send
+   `User.Identity.Name`). Set `ALLOW_CLIENT_USERNAME=false` to ignore it -
+   do that when browsers can reach the API directly, because anything a
+   client sends can be spoofed from dev tools.
+2. the **`USERNAME_HEADER` request header** (default `X-Forwarded-User`),
+   set by the SSO/reverse proxy in front of the app (IIS Windows
+   Authentication, oauth2-proxy, ...). Only trust it when the app is reachable
+   solely through that proxy.
+3. the literal `"unknown"` - bare development runs.
+
+The bundled example forms include a typable `username` field as a simple
+intranet/development workaround. In a real host application, do not ask the
+user to type it if you need reliable attribution: populate the field from the
+already-authenticated app user (for example `User.Identity.Name`) or use the
+trusted reverse-proxy header path above. A user-editable field is convenient,
+but it is not an audit control.
+
+Each upload is also written to the server log:
+`appended: user=... project=... file=... appended=...`.
+
+### Shared detail: errors, server info, and client implementation notes
+
+Errors return `{ "detail": "human-readable message" }` with:
+
+| Status | Meaning |
+|---|---|
+| `413` | File exceeds `MAX_UPLOAD_MB` |
+| `409` | Duplicate refused: same id field and Shape already exist in the destination or configured compare layers |
+| `415` | File extension not accepted |
+| `422` | Bad project ID, unreadable/empty file, no spatial layers, or missing CRS |
+| `502` | ArcGIS Enterprise rejected a request (message says why) |
+
+`GET /api/info` returns what the forms need to configure themselves - accepted
+extensions, the project-ID regex, configured geometry families, the size
+limit, the basemap URL, duplicate-detection settings, and whether dry-run is
+on. Interactive OpenAPI docs are at `/docs`.
+
+The reference forms are dependency-free JavaScript (examples 2 and 3 pull
+Leaflet from a CDN - vendor it into `static/` for intranet use), commented for
 porting. A MudBlazor client would use `MudFileUpload` +
-`HttpClient.PostAsync` with `MultipartFormDataContent` — the requests are
-the same.
+`HttpClient.PostAsync` with `MultipartFormDataContent` - the requests are the
+same.
