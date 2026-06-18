@@ -11,6 +11,7 @@ dependencies = [
     "pyogrio>=0.8",
     "shapely>=2.0",
     "requests>=2.31",
+    "requests-negotiate-sspi>=0.5.2; sys_platform == 'win32'",
     "python-dotenv>=1.0",
 ]
 

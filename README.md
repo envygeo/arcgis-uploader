@@ -8,14 +8,15 @@ feature service.
 
 **This is a reference implementation.** The Python/FastAPI service and the
 vanilla-HTML forms are examples; teams are expected to re-implement the parts
-they need on their own platform (MudBlazor, Leaflet, plain Python, .NET, …).
-Two example clients are included:
+they need on their own platform (MudBlazor, Leaflet, plain Python, .NET, ...).
+Four example clients are included:
 
 | | Page | Flow |
 |---|---|---|
 | **Example 1** | `/` or `/example1` ([static/example1.html](static/example1.html)) | one step: pick file → upload & append |
 | **Example 2** | `/example2` or `/preview` ([static/example2.html](static/example2.html)) | pick file → **preview map + attribute table** → confirm → append |
 | **Example 3** | `/example3` ([static/example3.html](static/example3.html)) | example 2 flow, with duplicate checks against the polygon target **and** read-only compare layers |
+| **Example 4** | `/example4` ([static/example4.html](static/example4.html)) | example 3 flow, but ArcGIS sees the browser SSO/OAuth user instead of `.env` username/password or the uvicorn process account |
 
 And two porting paths are documented below:
 
@@ -62,10 +63,13 @@ language. GDAL/OGR (which did the file reading here) has bindings or
 equivalents on every platform (.NET: MaxRev.Gdal / NetTopologySuite;
 JS: gdal-async).
 
-1. **Get a token** — `POST {portal}/sharing/rest/generateToken` with
-   `username`, `password`, `client=referer`, `referer={portal}`,
-   `expiration=60`, `f=json` → `{ "token": "...", "expires": 1718... }`.
-   Cache it; refresh before `expires`.
+1. **Get a token** — by default, `POST {portal}/sharing/rest/generateToken`
+   with `username`, `password`, `client=referer`, `referer={portal}`,
+   `expiration=60`, `f=json` -> `{ "token": "...", "expires": 1718... }`.
+   Cache it; refresh before `expires`. For Windows Integrated Authentication,
+   set `ARCGIS_AUTH_MODE=iwa`: the server uses SSPI/Negotiate as the Windows
+   account running the app and does not read or send `ARCGIS_USERNAME` or
+   `ARCGIS_PASSWORD`.
 
 2. **Read the layer's schema** — `POST {layerUrl}?f=json&token=...` →
    use `geometryType` to validate the target, `capabilities` to confirm
@@ -158,7 +162,9 @@ All settings come from environment variables or a `.env` file
 | Variable | Purpose |
 |---|---|
 | `PORTAL_URL` | ArcGIS Enterprise portal, e.g. `https://maps.example.gov/portal` |
+| `ARCGIS_AUTH_MODE` | `password` (default) uses `ARCGIS_USERNAME`/`ARCGIS_PASSWORD`; `iwa` uses Windows Integrated Authentication as the account running the service; `anonymous` sends no token |
 | `ARCGIS_USERNAME` / `ARCGIS_PASSWORD` | Built-in account with edit rights on the target layers. Leave empty only if the layers allow anonymous editing. |
+| `ARCGIS_OAUTH_CLIENT_ID` | OAuth client id for Example 4 browser SSO approval-code flow (default `arcgispro`) |
 | `GENERATE_TOKEN_URL` | Override for standalone ArcGIS Server (default `$PORTAL_URL/sharing/rest/generateToken`) |
 | `TARGET_LAYER_POINT` / `_POLYLINE` / `_POLYGON` | Feature layer URLs (ending `/0`, `/1`, …). Leave one blank to skip that geometry family. |
 | `PROJECT_ID_FIELD` | Field that receives the form value (default `project_id`) |
@@ -308,6 +314,40 @@ On append, the duplicate guard checks:
 Any matching Shape within `DUPLICATE_TOLERANCE_M` metres returns `409` and no
 features are appended.
 
+### Example 4: preview plus duplicate checks, using browser SSO for ArcGIS
+
+Example 4 uses `/example4` and the same preview/confirm client flow as
+example 3, except it does not send a user-typed `username` form field. The
+browser calls `/api/preview` for preview and `/api/upload-browser-sso` for
+confirm. Before confirming, the user clicks **Open ArcGIS sign-in**, completes
+Portal/Windows SSO in the browser, and pastes the ArcGIS approval code or full
+approval URL back into the page. The backend exchanges that code for an
+ArcGIS token and uses it for layer info, duplicate queries, and `addFeatures`.
+
+This is intentionally the browser-user path. It avoids the server-process
+identity and Kerberos double-hop problem: ArcGIS authorizes the user who
+approved the OAuth code, not the account running `uvicorn`.
+
+Configuration:
+
+```dotenv
+PORTAL_URL=https://maps.gov.yk.ca/portal
+# The default matches scripts/arcgis_iwa_token_check.py's browser SSO path.
+ARCGIS_OAUTH_CLIENT_ID=arcgispro
+```
+
+For troubleshooting, run the diagnostic script in browser SSO mode:
+
+```powershell
+uv run scripts/arcgis_iwa_token_check.py --auth-mode oauth
+```
+
+If `--auth-mode generate-token` reports that `username` and `password` are
+required, that Portal endpoint is not accepting direct server-side
+Negotiate/NTLM for token generation. Use Example 4's browser SSO/OAuth path,
+or put the app behind IIS/SSO with proper Kerberos delegation if you need a
+fully transparent enterprise deployment.
+
 ### Shared detail: who did the upload?
 
 Every appended feature carries a second attribute, `USERNAME_FIELD`
@@ -350,10 +390,10 @@ Errors return `{ "detail": "human-readable message" }` with:
 
 `GET /api/info` returns what the forms need to configure themselves - accepted
 extensions, the project-ID regex, configured geometry families, the size
-limit, the basemap URL, duplicate-detection settings, and whether dry-run is
-on. Interactive OpenAPI docs are at `/docs`.
+limit, the basemap URL, duplicate-detection settings, the ArcGIS auth mode,
+and whether dry-run is on. Interactive OpenAPI docs are at `/docs`.
 
-The reference forms are dependency-free JavaScript (examples 2 and 3 pull
+The reference forms are dependency-free JavaScript (examples 2, 3 and 4 pull
 Leaflet from a CDN - vendor it into `static/` for intranet use), commented for
 porting. A MudBlazor client would use `MudFileUpload` +
 `HttpClient.PostAsync` with `MultipartFormDataContent` - the requests are the

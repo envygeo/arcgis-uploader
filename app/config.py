@@ -62,6 +62,11 @@ class Settings:
     duplicate_id_field: str = ""
     duplicate_tolerance_m: float = 1.0
     duplicate_compare_layers: tuple[DuplicateCompareLayer, ...] = ()
+    oauth_client_id: str = "arcgispro"
+    # How the server gets an ArcGIS edit token:
+    # password = ARCGIS_USERNAME/ARCGIS_PASSWORD, iwa = Windows SSPI/IWA
+    # using the process identity, anonymous = do not request a token.
+    arcgis_auth_mode: str = "password"
 
 
 def load_settings() -> Settings:
@@ -84,6 +89,9 @@ def load_settings() -> Settings:
     )
     return Settings(
         portal_url=portal,
+        arcgis_auth_mode=normalize_arcgis_auth_mode(
+            os.environ.get("ARCGIS_AUTH_MODE", "password")
+        ),
         username=os.environ.get("ARCGIS_USERNAME", "").strip(),
         password=os.environ.get("ARCGIS_PASSWORD", ""),
         token_url=os.environ.get("GENERATE_TOKEN_URL", "").strip()
@@ -109,7 +117,34 @@ def load_settings() -> Settings:
         .strip(),
         duplicate_tolerance_m=float(os.environ.get("DUPLICATE_TOLERANCE_M", "1.0")),
         duplicate_compare_layers=parse_duplicate_compare_layers(compare_layers),
+        oauth_client_id=os.environ.get("ARCGIS_OAUTH_CLIENT_ID", "arcgispro").strip()
+        or "arcgispro",
     )
+
+
+def normalize_arcgis_auth_mode(value: str) -> str:
+    """Normalize the configured ArcGIS token source."""
+    normalized = value.strip().lower().replace("_", "-")
+    aliases = {
+        "": "password",
+        "builtin": "password",
+        "built-in": "password",
+        "user-password": "password",
+        "username-password": "password",
+        "windows": "iwa",
+        "windows-iwa": "iwa",
+        "integrated-windows": "iwa",
+        "sspi": "iwa",
+        "none": "anonymous",
+        "public": "anonymous",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"password", "iwa", "anonymous"}:
+        raise ValueError(
+            "ARCGIS_AUTH_MODE must be password, iwa, or anonymous "
+            f"(got {value!r})."
+        )
+    return normalized
 
 
 def parse_duplicate_compare_layers(value: str) -> tuple[DuplicateCompareLayer, ...]:

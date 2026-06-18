@@ -1,4 +1,6 @@
-from app.config import parse_duplicate_compare_layers
+import pytest
+
+from app.config import normalize_arcgis_auth_mode, parse_duplicate_compare_layers
 
 
 def test_parse_duplicate_compare_layers_json():
@@ -35,3 +37,15 @@ def test_parse_duplicate_compare_layers_triple_quoted_line_format():
 
     assert len(layers) == 1
     assert layers[0].url == "https://example.test/FeatureServer/5"
+
+
+def test_normalize_arcgis_auth_mode_aliases():
+    assert normalize_arcgis_auth_mode("password") == "password"
+    assert normalize_arcgis_auth_mode("windows") == "iwa"
+    assert normalize_arcgis_auth_mode("SSPI") == "iwa"
+    assert normalize_arcgis_auth_mode("none") == "anonymous"
+
+
+def test_normalize_arcgis_auth_mode_rejects_unknown():
+    with pytest.raises(ValueError, match="ARCGIS_AUTH_MODE"):
+        normalize_arcgis_auth_mode("kerberos-only")

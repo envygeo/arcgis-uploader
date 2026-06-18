@@ -1,13 +1,14 @@
 <!doctype html>
 <!--
-  Example 3: preview-and-confirm client with cross-layer duplicate checks.
+  Example 4: preview-and-confirm client using the browser user's ArcGIS SSO token.
 
-  Flow (same two requests as example 2, plus server-side duplicate checks):
+  Flow (example 3 plus browser SSO/OAuth):
 
-    1. user picks a file        ->  POST /api/preview   (file + username)
+    1. user signs in to Portal  ->  browser SSO/OAuth approval code
+    2. user picks a file        ->  POST /api/preview   (file only)
        render: map of the geometries, first rows of the attribute table
        (the attributes that will be REMOVED), feature counts
-    2. user confirms            ->  POST /api/upload    (file + project_id + username)
+    3. user confirms            ->  POST /api/upload-browser-sso (file + project_id + OAuth session)
 
   Nothing is stored server-side between the two calls — the browser simply
   sends the same File object twice. A port to MudBlazor/Leaflet/React needs
@@ -17,12 +18,15 @@
   leaflet.js/leaflet.css into static/ and change the two URLs below.
   BASEMAP_URL (optional, via /api/info) is an XYZ tile template; an ArcGIS
   tiled MapServer works directly:  .../MapServer/tile/{z}/{y}/{x}
+
+  This avoids the server-process/double-hop problem: ArcGIS sees the browser
+  SSO user who approved the OAuth code, not the account running uvicorn.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Project geometry uploader — preview</title>
+  <title>Project geometry uploader — browser SSO token</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
@@ -119,21 +123,23 @@
 </head>
 <body>
 <main>
-  <h1>Project geometry uploader <span class="hint">example 3: preview + duplicate check</span></h1>
+  <h1>Project geometry uploader <span class="hint">example 4: browser SSO token</span></h1>
   <p class="lede">
-    Choose a spatial file to see its geometry and attributes before anything
-    is written. On confirm, the server refuses duplicates found in the polygon
-    target layer or configured read-only compare layers. Attributes shown below
-    are <strong>removed</strong> on upload — features keep only your project ID
-    and username.
+    Sign in to ArcGIS in your browser, choose a spatial file to preview it,
+    then append after duplicate checks. Example 4 uses the browser user's SSO
+    token for ArcGIS, not the uvicorn process identity and not
+    <code>ARCGIS_USERNAME</code>/<code>ARCGIS_PASSWORD</code> from
+    <code>.env</code>.
     <a href="./">Example 1: one-step form</a> ·
     <a href="example2">Example 2: preview only</a> ·
-    <a href="example4">Example 4: Windows IWA token</a>
+    <a href="example3">Example 3: duplicate check</a>
   </p>
 
   <div id="dry-run-banner" class="banner" hidden>
     Dry-run mode: the pipeline runs but nothing is written to ArcGIS.
   </div>
+
+  <div id="auth-banner" class="banner" hidden></div>
 
   <div id="compare-banner" class="banner" hidden></div>
 
@@ -144,15 +150,29 @@
              placeholder="e.g. 2026-0042" autocomplete="off">
     </div>
 
-    <div style="display:grid; gap:.35rem;">
-      <label for="username">Username</label>
-      <input type="text" id="username" name="username" required
-             placeholder="e.g. YG\\mwilkie" autocomplete="username">
-      <p class="hint">
-        Example-only: in production, populate this from your authenticated app
-        user (for example <code>User.Identity.Name</code>) or use a trusted
-        proxy header. Client-sent values can be spoofed.
+    <div class="banner">
+      <strong>Username is informational in example 4.</strong>
+      This page does not send a user-typed <code>username</code> field. ArcGIS
+      authentication comes from the browser user's SSO/OAuth approval, and the
+      upload note is resolved server-side from the trusted SSO header (or
+      <code>unknown</code> in a bare local run).
+    </div>
+
+    <div class="card" style="padding:1rem; gap:.75rem;">
+      <strong>ArcGIS browser SSO</strong>
+      <p class="hint" style="margin:0;">
+        Click sign in, complete Portal/Windows SSO in the browser, then paste
+        the ArcGIS approval code or full approval URL below.
       </p>
+      <div class="actions">
+        <button type="button" id="signin-btn" class="secondary">Open ArcGIS sign-in</button>
+      </div>
+      <label for="oauth-code">Approval code or URL</label>
+      <input type="text" id="oauth-code" placeholder="Paste ArcGIS approval code or URL">
+      <div class="actions">
+        <button type="button" id="connect-btn" class="secondary">Use pasted code</button>
+      </div>
+      <p id="oauth-status" class="hint">Not signed in to ArcGIS yet.</p>
     </div>
 
     <div id="drop-zone" tabindex="0" role="button"
@@ -186,6 +206,8 @@
   const dropZone = $("drop-zone"), fileInput = $("file-input");
   let pickedFile = null;
   let serverInfo = null;
+  let oauthInfo = null;
+  let oauthSession = null;
   let map = null, geometryLayer = null;
 
   fetch("api/info").then(r => r.json()).then(info => {
@@ -194,12 +216,27 @@
     fileInput.accept = info.accepted_extensions.join(",");
     $("project-id").pattern = info.project_id_pattern.replace(/^\^|\$$/g, "");
     $("dry-run-banner").hidden = !info.dry_run;
+    renderAuthBanner(info);
     renderCompareBanner(info);
+    fetch("api/oauth-info")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { oauthInfo = data; })
+      .catch(() => { oauthInfo = null; });
     // The preview is visible (muted) from the start, so the user sees where
     // everything will appear before choosing a file.
     ensureMap();
     renderEmptyState();
   });
+
+  function renderAuthBanner(info) {
+    const banner = $("auth-banner");
+    banner.hidden = false;
+    const normalMode = info.arcgis_auth_mode || "password";
+    banner.textContent =
+      "Example 4 upload endpoint: browser SSO/OAuth. " +
+      "Confirm posts to /api/upload-browser-sso, so ArcGIS sees the browser user who approved the OAuth code. " +
+      `The other examples currently use ArcGIS auth mode: ${normalMode}.`;
+  }
 
   function renderCompareBanner(info) {
     const count = info.duplicate_compare_layer_count || 0;
@@ -249,7 +286,6 @@
     $("result").hidden = true;
     const body = new FormData();
     body.append("file", file);
-    body.append("username", $("username").value.trim());
     try {
       const response = await fetch("api/preview", { method: "POST", body });
       const data = await response.json();
@@ -293,7 +329,7 @@
     $("summary").textContent = summary;
     renderTables(
       data.layers,
-      data.username_attribute_value || formatUsernameAttribute(data.uploaded_by),
+      data.username_attribute_value,
     );
   }
 
@@ -337,9 +373,7 @@
       setProjectCell(addCell(tr, "td", "", "added added-project-cell"), projectId);
       setUsernameCell(
         addCell(tr, "td", "", "added added-username-cell"),
-        uploadedBy === null
-          ? formatUsernameAttribute($("username").value.trim())
-          : uploadedBy,
+        uploadedBy,
       );
       for (const value of row)
         addCell(tr, "td", value === null ? "—" : String(value),
@@ -363,12 +397,8 @@
   }
 
   function setUsernameCell(td, value) {
-    td.textContent = value || "(username)";
+    td.textContent = value || "(resolved by server)";
     td.classList.toggle("placeholder", !value);
-  }
-
-  function formatUsernameAttribute(username) {
-    return username ? `Uploaded by ${username}.` : "";
   }
 
   // The added columns track the inputs live, in every table on the page.
@@ -377,34 +407,64 @@
     document.querySelectorAll(".added-project-cell")
       .forEach(td => setProjectCell(td, value));
   });
-  $("username").addEventListener("input", () => {
-    const value = formatUsernameAttribute($("username").value.trim());
-    document.querySelectorAll(".added-username-cell")
-      .forEach(td => setUsernameCell(td, value));
+  $("signin-btn").addEventListener("click", async () => {
+    if (!oauthInfo) {
+      const response = await fetch("api/oauth-info");
+      if (!response.ok) return showResult(false, "PORTAL_URL is required for ArcGIS browser SSO.");
+      oauthInfo = await response.json();
+    }
+    window.open(oauthInfo.authorize_url, "_blank", "noopener");
+    $("oauth-status").textContent = "After ArcGIS approves sign-in, paste the approval code or URL here.";
   });
 
-  // ---- step 2: confirm — same request as example 1; server runs duplicate guard ----
+  $("connect-btn").addEventListener("click", async () => {
+    const code = $("oauth-code").value.trim();
+    if (!code) return showResult(false, "Paste the ArcGIS approval code or URL first.");
+    const body = new FormData();
+    body.append("code", code);
+    $("connect-btn").disabled = true;
+    $("oauth-status").textContent = "Exchanging approval code…";
+    try {
+      const response = await fetch("api/oauth-session", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) {
+        oauthSession = null;
+        $("oauth-status").textContent = "ArcGIS sign-in failed.";
+        return showResult(false, data.detail || "ArcGIS sign-in failed.");
+      }
+      oauthSession = data.session_id;
+      const who = data.username ? ` as ${data.username}` : "";
+      $("oauth-status").textContent = `Signed in to ArcGIS${who}.`;
+      $("oauth-code").value = "";
+    } catch (err) {
+      oauthSession = null;
+      $("oauth-status").textContent = "ArcGIS sign-in failed.";
+      showResult(false, "Could not reach the server: " + err.message);
+    } finally {
+      $("connect-btn").disabled = false;
+    }
+  });
+
+  // ---- step 2: confirm — server uses the browser SSO token and runs duplicate guard ----
   $("confirm-btn").addEventListener("click", async () => {
     const projectId = $("project-id").value.trim();
     if (!projectId) {
       $("project-id").focus();
       return showResult(false, "Enter a project ID first.");
     }
-    const username = $("username").value.trim();
-    if (!username) {
-      $("username").focus();
-      return showResult(false, "Enter a username first.");
+    if (!oauthSession && !serverInfo.dry_run) {
+      return showResult(false, "Sign in to ArcGIS with browser SSO first.");
     }
     const body = new FormData();
     body.append("file", pickedFile);
     body.append("project_id", projectId);
-    body.append("username", username);
+    body.append("oauth_session", oauthSession || "dry-run");
 
     const btn = $("confirm-btn");
     btn.disabled = true;
     btn.textContent = "Appending…";
     try {
-      const response = await fetch("api/upload", { method: "POST", body });
+      const response = await fetch("api/upload-browser-sso", { method: "POST", body });
       const data = await response.json();
       if (!response.ok) return showResult(false, data.detail || "Upload failed.");
       showSummary(data);

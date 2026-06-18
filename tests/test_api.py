@@ -10,7 +10,7 @@ from app.config import ESRI_POINT, ESRI_POLYGON, DuplicateCompareLayer, Settings
 from app.duplicates import count_duplicate_shapes
 from app.ingest import GeometryBuckets
 from app.main import DuplicateAppendError, _append
-from tests.conftest import geojson_bytes, post_file
+from tests.conftest import geojson_bytes, make_client, post_file
 
 
 def upload(client, content: bytes, filename: str, project_id: str = "2026-0042"):
@@ -32,11 +32,50 @@ def test_example_pages_exist(client):
         "/preview": "example 2: preview &amp; confirm",
         "/example2": "example 2: preview &amp; confirm",
         "/example3": "example 3: preview + duplicate check",
+        "/example4": "example 4: browser SSO token",
     }
     for path, expected in pages.items():
         response = client.get(path)
         assert response.status_code == 200
         assert expected in response.text
+
+
+def test_example4_does_not_send_user_typed_username(client):
+    response = client.get("/example4")
+
+    assert response.status_code == 200
+    assert 'name="username"' not in response.text
+    assert 'body.append("username"' not in response.text
+    assert 'fetch("api/upload-browser-sso"' in response.text
+    assert "Username is informational in example 4" in response.text
+
+
+def test_example4_browser_sso_upload_ignores_form_username_in_dry_run(client):
+    response = post_file(
+        client,
+        "/api/upload-browser-sso",
+        geojson_bytes(),
+        "data.geojson",
+        project_id="2026-0042",
+        oauth_session="dry-run",
+        username="spoofed",
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["uploaded_by"] == "unknown"
+    assert body["sample_feature"]["attributes"]["uploaded_by"] == "Uploaded by unknown."
+
+
+def test_oauth_info_uses_configured_portal_and_oob_redirect(client):
+    client = make_client(portal_url="https://example.test/portal")
+    response = client.get("/api/oauth-info")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "sharing/rest/oauth2/authorize" in body["authorize_url"]
+    assert "redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob" in body["authorize_url"]
+    assert body["client_id"] == "arcgispro"
 
 
 def test_attributes_are_stripped_and_project_id_assigned(client):

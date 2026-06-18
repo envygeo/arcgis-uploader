@@ -10,13 +10,18 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import tempfile
+import time
+from dataclasses import replace
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pyproj import CRS
 from pyproj.exceptions import CRSError
+import requests
 
 from .arcgis import ArcGISClient, ArcGISError
 from .config import FAMILY_LABELS, Settings, load_settings
@@ -26,6 +31,7 @@ from .ingest import ACCEPTED_UPLOADS, GeometryBuckets, IngestError, collect_geom
 from .preview import build_preview
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+OAUTH_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"
 
 logger = logging.getLogger("arcgis-uploader")
 
@@ -41,7 +47,22 @@ class DuplicateAppendError(ValueError):
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     client = ArcGISClient(settings)
+    iwa_client: ArcGISClient | None = None
+    oauth_sessions: dict[str, dict] = {}
     app = FastAPI(title="arcgis-uploader", description=__doc__)
+
+    def windows_iwa_client() -> ArcGISClient:
+        nonlocal iwa_client
+        if iwa_client is None:
+            iwa_client = ArcGISClient(
+                replace(
+                    settings,
+                    arcgis_auth_mode="iwa",
+                    username="",
+                    password="",
+                )
+            )
+        return iwa_client
 
     @app.get("/", include_in_schema=False)
     @app.get("/example1", include_in_schema=False)
@@ -56,6 +77,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/example3", include_in_schema=False)
     def example3_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "example3.html")
+
+    @app.get("/example4", include_in_schema=False)
+    def example4_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "example4.html")
 
     @app.get("/api/info")
     def info() -> dict:
@@ -75,6 +100,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             or settings.project_id_field,
             "duplicate_tolerance_m": settings.duplicate_tolerance_m,
             "duplicate_compare_layer_count": len(settings.duplicate_compare_layers),
+            "arcgis_auth_mode": settings.arcgis_auth_mode,
+            "oauth_client_id": settings.oauth_client_id,
+        }
+
+    @app.get("/api/oauth-info")
+    def oauth_info() -> dict:
+        if not settings.portal_url:
+            raise HTTPException(422, "PORTAL_URL is required for browser SSO.")
+        authorize_url = urljoin(
+            settings.portal_url + "/", "sharing/rest/oauth2/authorize"
+        )
+        params = {
+            "client_id": settings.oauth_client_id,
+            "response_type": "code",
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "expiration": "60",
+        }
+        return {
+            "authorize_url": f"{authorize_url}?{urlencode(params)}",
+            "client_id": settings.oauth_client_id,
+            "redirect_uri": OAUTH_REDIRECT_URI,
+        }
+
+    @app.post("/api/oauth-session")
+    def oauth_session(code: str = Form(...)) -> dict:
+        if not settings.portal_url:
+            raise HTTPException(422, "PORTAL_URL is required for browser SSO.")
+        token_body = _exchange_oauth_code(settings, code)
+        token = str(token_body["token"])
+        expires = _oauth_token_expires(token_body)
+        session_id = secrets.token_urlsafe(24)
+        oauth_sessions[session_id] = {"token": token, "expires": expires}
+        return {
+            "session_id": session_id,
+            "expires": int(expires * 1000),
+            "username": _oauth_username(settings, token),
         }
 
     @app.post("/api/preview")
@@ -111,45 +172,212 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         project_id: str = Form(...),
         username: str | None = Form(None),
     ) -> dict:
-        project_id = project_id.strip()
-        if not re.fullmatch(settings.project_id_pattern, project_id):
-            raise HTTPException(
-                422, f"project_id must match {settings.project_id_pattern}"
-            )
-        username = _resolve_username(request, username, settings)
-        with tempfile.TemporaryDirectory(prefix="arcgis-uploader-") as tmp:
-            workdir = Path(tmp)
-            upload_path = _receive_upload(file, workdir, settings.max_upload_mb)
-            try:
-                buckets = collect_geometries(
-                    upload_path, workdir, settings.default_source_epsg
-                )
-            except IngestError as exc:
-                raise HTTPException(422, str(exc)) from exc
-            try:
-                result = _append(buckets, project_id, username, settings, client)
-            except DuplicateAppendError as exc:
-                logger.info(
-                    "duplicate append refused: user=%s project=%s file=%s: %s",
-                    username, project_id, file.filename, exc,
-                )
-                raise HTTPException(409, str(exc)) from exc
-            except ArcGISError as exc:
-                logger.warning(
-                    "append failed: user=%s project=%s file=%s: %s",
-                    username, project_id, file.filename, exc,
-                )
-                raise HTTPException(502, str(exc)) from exc
-        logger.info(
-            "appended: user=%s project=%s file=%s appended=%s skipped=%s dry_run=%s",
-            username, project_id, file.filename,
-            result["features_appended"],
-            result["features_skipped_no_target_layer"],
-            settings.dry_run,
+        return _upload_request(request, file, project_id, username, settings, client)
+
+    @app.post("/api/upload-iwa")
+    def upload_iwa(
+        request: Request,
+        file: UploadFile = File(...),
+        project_id: str = Form(...),
+    ) -> dict:
+        """Example 4 upload: force ArcGIS token generation with Windows IWA.
+
+        The endpoint intentionally has no `username` form field. Upload
+        attribution is informational and still resolves from the trusted proxy
+        header (or "unknown" in bare local development), while the ArcGIS edit
+        token comes from the Windows account running the server process.
+        """
+        return _upload_request(
+            request,
+            file,
+            project_id,
+            None,
+            replace(settings, arcgis_auth_mode="iwa", username="", password=""),
+            client if settings.dry_run else windows_iwa_client(),
         )
-        return result
+
+    @app.post("/api/upload-browser-sso")
+    def upload_browser_sso(
+        request: Request,
+        file: UploadFile = File(...),
+        project_id: str = Form(...),
+        oauth_session: str = Form(...),
+    ) -> dict:
+        """Example 4 upload: use the browser user's OAuth/SSO token.
+
+        The browser user signs in to Portal, pastes the approval code, and the
+        backend exchanges that code for an ArcGIS token. This avoids the
+        server-process/double-hop problem: ArcGIS sees the browser SSO user,
+        not the uvicorn service account.
+        """
+        oauth_client = (
+            client
+            if settings.dry_run and oauth_session == "dry-run"
+            else _client_for_oauth_session(settings, oauth_sessions, oauth_session)
+        )
+        return _upload_request(
+            request,
+            file,
+            project_id,
+            None,
+            replace(settings, arcgis_auth_mode="password", username="", password=""),
+            oauth_client,
+        )
 
     return app
+
+
+def _upload_request(
+    request: Request,
+    file: UploadFile,
+    project_id: str,
+    form_username: str | None,
+    settings: Settings,
+    client: ArcGISClient,
+) -> dict:
+    project_id = project_id.strip()
+    if not re.fullmatch(settings.project_id_pattern, project_id):
+        raise HTTPException(
+            422, f"project_id must match {settings.project_id_pattern}"
+        )
+    username = _resolve_username(request, form_username, settings)
+    with tempfile.TemporaryDirectory(prefix="arcgis-uploader-") as tmp:
+        workdir = Path(tmp)
+        upload_path = _receive_upload(file, workdir, settings.max_upload_mb)
+        try:
+            buckets = collect_geometries(
+                upload_path, workdir, settings.default_source_epsg
+            )
+        except IngestError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            result = _append(buckets, project_id, username, settings, client)
+        except DuplicateAppendError as exc:
+            logger.info(
+                "duplicate append refused: user=%s project=%s file=%s: %s",
+                username, project_id, file.filename, exc,
+            )
+            raise HTTPException(409, str(exc)) from exc
+        except ArcGISError as exc:
+            logger.warning(
+                "append failed: user=%s project=%s file=%s: %s",
+                username, project_id, file.filename, exc,
+            )
+            raise HTTPException(502, str(exc)) from exc
+    logger.info(
+        "appended: user=%s project=%s file=%s appended=%s skipped=%s dry_run=%s",
+        username, project_id, file.filename,
+        result["features_appended"],
+        result["features_skipped_no_target_layer"],
+        settings.dry_run,
+    )
+    return result
+
+
+def _exchange_oauth_code(settings: Settings, pasted_code: str) -> dict:
+    code = _extract_oauth_code(pasted_code)
+    if not code:
+        raise HTTPException(422, "Paste the ArcGIS OAuth approval code or URL.")
+    token_url = urljoin(settings.portal_url + "/", "sharing/rest/oauth2/token")
+    try:
+        response = requests.post(
+            token_url,
+            data={
+                "client_id": settings.oauth_client_id,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+                "f": "json",
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        body = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise HTTPException(502, f"OAuth code exchange failed: {exc}") from exc
+
+    if isinstance(body, dict) and "error" in body:
+        error = body.get("error") or {}
+        details = " ".join(str(item) for item in (error.get("details") or []))
+        message = f"{error.get('message', 'ArcGIS OAuth error')} {details}".strip()
+        raise HTTPException(502, message)
+
+    token = body.get("access_token") or body.get("token")
+    if not token:
+        raise HTTPException(502, "OAuth code exchange succeeded but returned no token.")
+    normalized = dict(body)
+    normalized["token"] = str(token)
+    return normalized
+
+
+def _extract_oauth_code(pasted: str) -> str:
+    pasted = pasted.strip()
+    if not pasted:
+        return ""
+
+    parsed = urlparse(pasted)
+    query_code = parse_qs(parsed.query).get("code")
+    if query_code:
+        return query_code[0].strip()
+    fragment_code = parse_qs(parsed.fragment).get("code")
+    if fragment_code:
+        return fragment_code[0].strip()
+
+    match = re.search(r"(?:[?&]code=|code[:=]\s*)([A-Za-z0-9._~-]+)", pasted)
+    if match:
+        return match.group(1).strip()
+    return pasted
+
+
+def _oauth_token_expires(body: dict) -> float:
+    if body.get("expires") is not None:
+        try:
+            return int(body["expires"]) / 1000.0
+        except (TypeError, ValueError):
+            pass
+    if body.get("expires_in") is not None:
+        try:
+            return time.time() + int(body["expires_in"])
+        except (TypeError, ValueError):
+            pass
+    return time.time() + 60 * 60
+
+
+def _oauth_username(settings: Settings, token: str) -> str:
+    try:
+        response = requests.get(
+            urljoin(settings.portal_url + "/", "sharing/rest/community/self"),
+            params={"f": "json", "token": token},
+            timeout=30,
+        )
+        response.raise_for_status()
+        body = response.json()
+    except (requests.RequestException, ValueError):
+        return ""
+    if isinstance(body, dict) and not body.get("error"):
+        return str(body.get("username") or "")
+    return ""
+
+
+def _client_for_oauth_session(
+    settings: Settings,
+    oauth_sessions: dict[str, dict],
+    session_id: str,
+) -> ArcGISClient:
+    session = oauth_sessions.get(session_id)
+    if not session:
+        raise HTTPException(401, "Sign in to ArcGIS first; the browser SSO session is missing.")
+    expires = float(session.get("expires") or 0)
+    if time.time() >= expires - 60:
+        oauth_sessions.pop(session_id, None)
+        raise HTTPException(401, "Sign in to ArcGIS again; the browser SSO token expired.")
+
+    client = ArcGISClient(
+        replace(settings, arcgis_auth_mode="password", username="", password="")
+    )
+    client._token = str(session["token"])
+    client._token_expires = expires
+    return client
 
 
 def _resolve_username(

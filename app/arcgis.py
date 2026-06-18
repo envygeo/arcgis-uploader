@@ -6,7 +6,10 @@ README ("Porting the whole pipeline").
 """
 from __future__ import annotations
 
+import getpass
 import json
+import os
+import subprocess
 import time
 
 import requests
@@ -25,6 +28,8 @@ class ArcGISClient:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.session = requests.Session()
+        if self.settings.arcgis_auth_mode == "iwa":
+            self._add_iwa_auth()
         self._token: str | None = None
         self._token_expires = 0.0  # epoch seconds
         self._layer_info: dict[str, dict] = {}
@@ -32,25 +37,120 @@ class ArcGISClient:
     # -- auth -----------------------------------------------------------------
     def token(self) -> str | None:
         s = self.settings
-        if not (s.token_url and s.username):
+        if s.arcgis_auth_mode == "anonymous":
             return None  # anonymous; the layer must allow public editing
+        if not s.token_url:
+            return None
         if self._token and time.time() < self._token_expires - 60:
             return self._token
-        body = self._post(
-            s.token_url,
-            {
-                "username": s.username,
-                "password": s.password,
-                "client": "referer",
-                "referer": s.portal_url or s.token_url,
-                "expiration": TOKEN_LIFETIME_MIN,
-                "f": "json",
-            },
-            with_token=False,
-        )
+
+        if s.arcgis_auth_mode == "iwa":
+            body = self._generate_iwa_token()
+        else:
+            if not s.username:
+                return None
+            body = self._post(
+                s.token_url,
+                {
+                    "username": s.username,
+                    "password": s.password,
+                    "client": "referer",
+                    "referer": s.portal_url or s.token_url,
+                    "expiration": TOKEN_LIFETIME_MIN,
+                    "f": "json",
+                },
+                with_token=False,
+            )
         self._token = body["token"]
         self._token_expires = body["expires"] / 1000.0
         return self._token
+
+    def _add_iwa_auth(self) -> None:
+        if os.name != "nt":
+            raise ArcGISError(
+                "ARCGIS_AUTH_MODE=iwa requires Windows. Run the service under "
+                "the Windows/domain account that should authenticate to ArcGIS."
+            )
+        try:
+            from requests_negotiate_sspi import HttpNegotiateAuth
+        except ImportError as exc:
+            raise ArcGISError(
+                "ARCGIS_AUTH_MODE=iwa requires requests-negotiate-sspi. "
+                "Install it with `uv sync` or `pip install requests-negotiate-sspi`."
+            ) from exc
+        self.session.auth = HttpNegotiateAuth()
+
+    def _generate_iwa_token(self) -> dict:
+        """Generate a Portal token using the Windows process identity.
+
+        This is the unattended-server version of scripts/arcgis_iwa_token_check.py:
+        no ARCGIS_USERNAME or ARCGIS_PASSWORD values are read or sent. The
+        service account running uvicorn/IIS performs the SSPI/IWA handshake.
+        """
+        s = self.settings
+        params = {
+            "client": "referer",
+            "referer": s.portal_url or s.token_url,
+            "expiration": str(TOKEN_LIFETIME_MIN),
+            "f": "json",
+        }
+        attempts: list[str] = []
+
+        # Esri's IWA sample uses GET with SSPI. POST is kept as a fallback
+        # because ordinary username/password generateToken flows use POST.
+        for method in ("GET", "POST"):
+            body = self._request_token(
+                method,
+                s.token_url,
+                params=params if method == "GET" else None,
+                data=params if method == "POST" else None,
+            )
+            if isinstance(body, dict) and body.get("token"):
+                return body
+            attempts.append(f"{method}: {self._arcgis_error_summary(body)}")
+
+        raise ArcGISError(
+            "Could not generate an ArcGIS token with Windows IWA credentials. "
+            f"Attempted Windows identity: {windows_identity()}. "
+            "Confirm the service is running as a domain account with edit "
+            "access and that the Portal generateToken endpoint accepts "
+            "Negotiate/NTLM.\n"
+            + "\n".join(f"  - {attempt}" for attempt in attempts)
+        )
+
+    def _request_token(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict | None,
+        data: dict | None,
+    ) -> dict | None:
+        try:
+            response = self.session.request(
+                method,
+                url,
+                params=params,
+                data=data,
+                timeout=120,
+                headers={"Referer": self.settings.portal_url or url},
+            )
+            response.raise_for_status()
+            return response.json()
+        except (requests.RequestException, ValueError) as exc:
+            return {"error": {"message": f"Request failed: {exc}"}}
+
+    def _arcgis_error_summary(self, body) -> str:
+        if isinstance(body, dict) and "error" in body:
+            error = body.get("error") or {}
+            if isinstance(error, dict):
+                details = " ".join(str(item) for item in (error.get("details") or []))
+                return f"{error.get('message', 'ArcGIS error')} {details}".strip()
+            return str(error)
+        if isinstance(body, dict):
+            keys = ", ".join(sorted(str(key) for key in body.keys())[:8])
+            return f"JSON object without token; keys: {keys}"
+        return "No JSON token response"
 
     # -- layer metadata ---------------------------------------------------------
     def layer_info(self, layer_url: str) -> dict:
@@ -206,12 +306,39 @@ class ArcGISClient:
             response.raise_for_status()
             body = response.json()
         except (requests.RequestException, ValueError) as exc:
-            raise ArcGISError(f"Request to {url} failed: {exc}") from exc
+            raise ArcGISError(
+                self._with_auth_context(f"Request to {url} failed: {exc}")
+            ) from exc
         # ArcGIS reports most errors inside an HTTP 200 body.
         if isinstance(body, dict) and "error" in body:
             err = body["error"]
             details = " ".join(err.get("details") or [])
             raise ArcGISError(
-                f"{url}: {err.get('message', 'ArcGIS error')} {details}".strip()
+                self._with_auth_context(
+                    f"{url}: {err.get('message', 'ArcGIS error')} {details}".strip()
+                )
             )
         return body
+
+    def _with_auth_context(self, message: str) -> str:
+        if self.settings.arcgis_auth_mode != "iwa":
+            return message
+        return f"ArcGIS IWA attempted Windows identity {windows_identity()}: {message}"
+
+
+def windows_identity() -> str:
+    """Return the Windows account used for SSPI/IWA diagnostics."""
+    candidates: list[str] = []
+    for command in (["whoami"], ["whoami", "/upn"]):
+        try:
+            output = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL)
+        except Exception:
+            continue
+        output = output.strip()
+        if output and output not in candidates:
+            candidates.append(output)
+    if candidates:
+        return " / ".join(candidates)
+    domain = os.environ.get("USERDOMAIN", "").strip()
+    user = getpass.getuser()
+    return f"{domain}\\{user}" if domain else user
