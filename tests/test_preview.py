@@ -101,10 +101,10 @@ def test_preview_resolves_username_like_upload_does(client):
 
     response = post_file(
         client, "/api/preview", geojson_bytes(), "data.geojson",
-        headers={"X-Forwarded-User": "YG\\someone"},
+        headers={"X-Forwarded-User": "KLONDIKE\\someone"},
     )
-    assert response.json()["uploaded_by"] == "YG\\someone"
-    assert response.json()["username_attribute_value"] == "Uploaded by YG\\someone."
+    assert response.json()["uploaded_by"] == "KLONDIKE\\someone"
+    assert response.json()["username_attribute_value"] == "Uploaded by KLONDIKE\\someone."
 
     response = post_file(
         client, "/api/preview", geojson_bytes(), "data.geojson",

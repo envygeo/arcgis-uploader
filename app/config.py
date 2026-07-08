@@ -152,7 +152,7 @@ def parse_duplicate_compare_layers(value: str) -> tuple[DuplicateCompareLayer, .
 
     Preferred format is JSON because it is unambiguous in a .env file:
 
-    [{"id_field":"attr_yesab_proj","url":"https://.../FeatureServer/3"}]
+    [{"id_field":"registry_project_id","url":"https://.../FeatureServer/3"}]
 
     For operator convenience this also accepts the older sketch format of one
     ``id_field, url`` pair per line.

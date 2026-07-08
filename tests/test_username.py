@@ -14,12 +14,12 @@ def attributes(response):
 def test_proxy_header(client):
     response = post_file(
         client, "/api/upload", geojson_bytes(), "data.geojson",
-        headers={"X-Forwarded-User": "YG\\mwilkie"},
+        headers={"X-Forwarded-User": "KLONDIKE\\alex"},
         project_id="2026-0042",
     )
-    assert attributes(response)["uploaded_by"] == "Uploaded by YG\\mwilkie."
-    assert response.json()["uploaded_by"] == "YG\\mwilkie"
-    assert response.json()["username_attribute_value"] == "Uploaded by YG\\mwilkie."
+    assert attributes(response)["uploaded_by"] == "Uploaded by KLONDIKE\\alex."
+    assert response.json()["uploaded_by"] == "KLONDIKE\\alex"
+    assert response.json()["username_attribute_value"] == "Uploaded by KLONDIKE\\alex."
 
 
 def test_form_field_from_calling_app_outranks_header(client):

@@ -212,7 +212,7 @@ def test_duplicate_detection_uses_one_metre_precision():
 def test_append_refuses_duplicate_shape_with_same_id():
     class Client:
         def validate_layer(self, layer_url, esri_type, required_fields):
-            assert required_fields == ["yesab_id", "uploaded_by"]
+            assert required_fields == ["review_id", "uploaded_by"]
             return {name: name for name in required_fields}
 
         def layer_wkid(self, layer_url):
@@ -222,8 +222,8 @@ def test_append_refuses_duplicate_shape_with_same_id():
             return False
 
         def duplicate_geometries(self, layer_url, id_field, id_value, wkid):
-            assert id_field == "yesab_id"
-            assert id_value == "YESAB-123"
+            assert id_field == "review_id"
+            assert id_value == "YT-REV-123"
             return [{"x": -135.05, "y": 60.72, "spatialReference": {"wkid": wkid}}]
 
         def add_features(self, layer_url, features):
@@ -235,13 +235,13 @@ def test_append_refuses_duplicate_shape_with_same_id():
         password="",
         token_url="",
         layer_urls={ESRI_POINT: "https://example.test/layer/0"},
-        project_id_field="yesab_id",
+        project_id_field="review_id",
         project_id_pattern=r"^[\w][\w\- .]{0,63}$",
         max_upload_mb=10,
         default_source_epsg=None,
         dry_run=False,
         duplicate_detection=True,
-        duplicate_id_field="yesab_id",
+        duplicate_id_field="review_id",
         duplicate_tolerance_m=1.0,
     )
     buckets = GeometryBuckets(
@@ -253,7 +253,7 @@ def test_append_refuses_duplicate_shape_with_same_id():
     )
 
     with pytest.raises(DuplicateAppendError, match="append refused"):
-        _append(buckets, "YESAB-123", "tester", settings, Client())
+        _append(buckets, "YT-REV-123", "tester", settings, Client())
 
 
 def test_append_checks_duplicate_compare_layers_with_their_own_id_field():
@@ -262,7 +262,7 @@ def test_append_checks_duplicate_compare_layers_with_their_own_id_field():
     class Client:
         def validate_layer(self, layer_url, esri_type, required_fields):
             assert layer_url == "https://example.test/target/0"
-            assert required_fields == ["YESAB_ID", "uploaded_by"]
+            assert required_fields == ["REVIEW_ID", "uploaded_by"]
             return {name: name for name in required_fields}
 
         def layer_wkid(self, layer_url):
@@ -274,10 +274,10 @@ def test_append_checks_duplicate_compare_layers_with_their_own_id_field():
         def duplicate_geometries(self, layer_url, id_field, id_value, wkid):
             assert id_value == "2026-0042"
             if layer_url == "https://example.test/target/0":
-                assert id_field == "YESAB_ID"
+                assert id_field == "REVIEW_ID"
                 return []
             if layer_url == compare_url:
-                assert id_field == "attr_yesab_proj"
+                assert id_field == "registry_project_id"
                 return [
                     {
                         "rings": [
@@ -297,7 +297,7 @@ def test_append_checks_duplicate_compare_layers_with_their_own_id_field():
         password="",
         token_url="",
         layer_urls={ESRI_POLYGON: "https://example.test/target/0"},
-        project_id_field="YESAB_ID",
+        project_id_field="REVIEW_ID",
         project_id_pattern=r"^[\w][\w\- .]{0,63}$",
         max_upload_mb=10,
         default_source_epsg=None,
@@ -305,7 +305,7 @@ def test_append_checks_duplicate_compare_layers_with_their_own_id_field():
         duplicate_detection=True,
         duplicate_tolerance_m=1.0,
         duplicate_compare_layers=(
-            DuplicateCompareLayer("attr_yesab_proj", compare_url),
+            DuplicateCompareLayer("registry_project_id", compare_url),
         ),
     )
     buckets = GeometryBuckets(

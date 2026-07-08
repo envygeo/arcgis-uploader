@@ -5,23 +5,23 @@ from app.config import normalize_arcgis_auth_mode, parse_duplicate_compare_layer
 
 def test_parse_duplicate_compare_layers_json():
     layers = parse_duplicate_compare_layers(
-        """[{"id_field":"attr_yesab_proj","url":"https://example.test/FeatureServer/3/"}]"""
+        """[{"id_field":"registry_project_id","url":"https://example.test/FeatureServer/3/"}]"""
     )
 
     assert len(layers) == 1
-    assert layers[0].id_field == "attr_yesab_proj"
+    assert layers[0].id_field == "registry_project_id"
     assert layers[0].url == "https://example.test/FeatureServer/3"
 
 
 def test_parse_duplicate_compare_layers_line_format():
     layers = parse_duplicate_compare_layers(
         """
-        'attr_yesab_proj', https://example.test/FeatureServer/3
-        'attr_yesab_proj', https://example.test/FeatureServer/4,
+        'registry_project_id', https://example.test/FeatureServer/3
+        'registry_project_id', https://example.test/FeatureServer/4,
         """
     )
 
-    assert [layer.id_field for layer in layers] == ["attr_yesab_proj", "attr_yesab_proj"]
+    assert [layer.id_field for layer in layers] == ["registry_project_id", "registry_project_id"]
     assert [layer.url for layer in layers] == [
         "https://example.test/FeatureServer/3",
         "https://example.test/FeatureServer/4",
@@ -31,7 +31,7 @@ def test_parse_duplicate_compare_layers_line_format():
 def test_parse_duplicate_compare_layers_triple_quoted_line_format():
     layers = parse_duplicate_compare_layers(
         '''"""
-        'attr_yesab_proj', https://example.test/FeatureServer/5
+        'registry_project_id', https://example.test/FeatureServer/5
         """'''
     )
 

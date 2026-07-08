@@ -69,7 +69,7 @@ class FakeDeniedSession:
             {
                 "error": {
                     "message": "User does not have permissions",
-                    "details": ["to access 'env_yesab/ea_project_areas3.mapserver'."],
+                    "details": ["to access 'hosted/northern_project_areas.mapserver'."],
                 }
             }
         )
@@ -108,7 +108,7 @@ def test_iwa_permission_error_reports_attempted_windows_identity(monkeypatch):
     fake_session = FakeDeniedSession()
     monkeypatch.setattr("app.arcgis.requests.Session", lambda: fake_session)
     monkeypatch.setattr(ArcGISClient, "_add_iwa_auth", lambda self: None)
-    monkeypatch.setattr("app.arcgis.windows_identity", lambda: "yg\\jdoe / jdoe@gov.yk.ca")
+    monkeypatch.setattr("app.arcgis.windows_identity", lambda: "klondike\\jdoe / jdoe@example.gov")
 
     client = ArcGISClient(make_settings(arcgis_auth_mode="iwa"))
     client._token = "iwa-token"
@@ -118,5 +118,5 @@ def test_iwa_permission_error_reports_attempted_windows_identity(monkeypatch):
         client.layer_info("https://maps.example.test/server/rest/services/x/FeatureServer/0")
 
     message = str(exc_info.value)
-    assert "ArcGIS IWA attempted Windows identity yg\\jdoe / jdoe@gov.yk.ca" in message
+    assert "ArcGIS IWA attempted Windows identity klondike\\jdoe / jdoe@example.gov" in message
     assert "User does not have permissions" in message

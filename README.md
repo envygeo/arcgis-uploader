@@ -105,7 +105,7 @@ A feature posted to `addFeatures` looks like:
 ```json
 {
   "geometry": { "rings": [[[ -135.1, 60.7 ], ...]], "spatialReference": { "wkid": 4326 } },
-  "attributes": { "project_id": "2026-0042", "uploaded_by": "Uploaded by YG\\mwilkie." }
+  "attributes": { "project_id": "2026-0042", "uploaded_by": "Uploaded by KLONDIKE\\alex." }
 }
 ```
 
@@ -173,7 +173,7 @@ All settings come from environment variables or a `.env` file
 | `USERNAME_HEADER` | Header carrying the authenticated user, set by the SSO/reverse proxy (default `X-Forwarded-User`) |
 | `ALLOW_CLIENT_USERNAME` | Accept a `username` form field from calling apps (default `true`) |
 | `DUPLICATE_DETECTION` | `true` = refuse appends when the destination already has the same id field and Shape (default `true`) |
-| `DUPLICATE_ID_FIELD` | Field used for duplicate lookup. Defaults to `PROJECT_ID_FIELD`; set to `yesab_id` when that is the destination id field. If it differs from `PROJECT_ID_FIELD`, the form value is also written to this field. |
+| `DUPLICATE_ID_FIELD` | Field used for duplicate lookup. Defaults to `PROJECT_ID_FIELD`; set to another field such as `review_id` when that is the destination id field. If it differs from `PROJECT_ID_FIELD`, the form value is also written to this field. |
 | `DUPLICATE_TOLERANCE_M` | Shape comparison tolerance in metres (default `1.0`) |
 | `DUPLICATE_COMPARE_LAYERS` | Optional JSON array of extra read-only layers to check for duplicates. Each object has `id_field` and `url`. The target layer is still checked using `DUPLICATE_ID_FIELD`. |
 | `MAX_UPLOAD_MB` | Upload size cap (default 200) |
@@ -200,7 +200,7 @@ the target layer.
   `USERNAME_FIELD`, length ≥ 128.
 - When duplicate detection is enabled, the target layer must also support
   `Query` and contain `DUPLICATE_ID_FIELD` (usually the same field as
-  `PROJECT_ID_FIELD`, or `yesab_id`).
+  `PROJECT_ID_FIELD`, or another configured id field such as `review_id`).
 - Any `DUPLICATE_COMPARE_LAYERS` must support `Query`, return geometry, and
   contain their configured `id_field`. They do not need `Create` permission
   because they are read-only duplicate sources.
@@ -232,8 +232,8 @@ Successful response (`200`):
 ```json
 {
   "project_id": "2026-0042",
-  "uploaded_by": "YG\\mwilkie",
-  "username_attribute_value": "Uploaded by YG\\mwilkie.",
+  "uploaded_by": "KLONDIKE\\alex",
+  "username_attribute_value": "Uploaded by KLONDIKE\\alex.",
   "layers_read": ["upload.zip:roads", "upload.zip:sites"],
   "features_appended": { "point": 12, "line": 340 },
   "features_skipped_no_target_layer": { "polygon": 2 },
@@ -267,8 +267,8 @@ username  optional - same resolution as /api/upload
   "features_skipped_invalid": 0,
   "geojson": { "type": "FeatureCollection", "features": ["... in EPSG:4326 ..."] },
   "geojson_truncated": false,
-  "uploaded_by": "YG\\mwilkie",
-  "username_attribute_value": "Uploaded by YG\\mwilkie."
+  "uploaded_by": "KLONDIKE\\alex",
+  "username_attribute_value": "Uploaded by KLONDIKE\\alex."
 }
 ```
 
@@ -285,31 +285,31 @@ server-side between the two calls: on confirm, the client simply re-sends the
 same file to `/api/upload`. That keeps every port stateless; if your files are
 huge, cache the upload under a token server-side instead.
 
-### Example 3: preview plus YESAB cross-layer duplicate checks
+### Example 3: preview plus reference-layer duplicate checks
 
 Example 3 uses the `/example3` page and the same two-request flow as example 2.
 The difference is server-side configuration: when the user confirms, polygon
 appends are refused if the submitted project ID and Shape already exist in
-`TARGET_LAYER_POLYGON` **or** in the read-only YESAB project layers below.
+`TARGET_LAYER_POLYGON` **or** in the read-only Yukon project register layers below.
 
 Use JSON for structured `.env` values rather than ad-hoc comma parsing:
 
 ```dotenv
-TARGET_LAYER_POLYGON=https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/EA_Project_Areas3/FeatureServer/0
-PROJECT_ID_FIELD=YESAB_ID
+TARGET_LAYER_POLYGON=https://maps.example.gov/server/rest/services/Hosted/Northern_Project_Areas/FeatureServer/0
+PROJECT_ID_FIELD=REVIEW_ID
 
 DUPLICATE_DETECTION=true
-  # Defaults to PROJECT_ID_FIELD, so the target layer check uses YESAB_ID.
-#DUPLICATE_ID_FIELD=YESAB_ID
-DUPLICATE_COMPARE_LAYERS=[{"id_field":"attr_yesab_proj","url":"https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/YESAB_Projects/FeatureServer/3"},{"id_field":"attr_yesab_proj","url":"https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/YESAB_Projects/FeatureServer/4"},{"id_field":"attr_yesab_proj","url":"https://maps.gov.yk.ca/server/rest/services/ENV_YESAB/YESAB_Projects/FeatureServer/5"}]
+  # Defaults to PROJECT_ID_FIELD, so the target layer check uses REVIEW_ID.
+#DUPLICATE_ID_FIELD=REVIEW_ID
+DUPLICATE_COMPARE_LAYERS=[{"id_field":"registry_project_id","url":"https://maps.example.gov/server/rest/services/Reference/Yukon_Project_Register/FeatureServer/3"},{"id_field":"registry_project_id","url":"https://maps.example.gov/server/rest/services/Reference/Yukon_Project_Register/FeatureServer/4"},{"id_field":"registry_project_id","url":"https://maps.example.gov/server/rest/services/Reference/Yukon_Project_Register/FeatureServer/5"}]
 ```
 
 On append, the duplicate guard checks:
 
-1. `TARGET_LAYER_POLYGON` where `YESAB_ID = <submitted project id>`
-2. `YESAB_Projects/FeatureServer/3` where `attr_yesab_proj = <submitted project id>`
-3. `YESAB_Projects/FeatureServer/4` where `attr_yesab_proj = <submitted project id>`
-4. `YESAB_Projects/FeatureServer/5` where `attr_yesab_proj = <submitted project id>`
+1. `TARGET_LAYER_POLYGON` where `REVIEW_ID = <submitted project id>`
+2. `Yukon_Project_Register/FeatureServer/3` where `registry_project_id = <submitted project id>`
+3. `Yukon_Project_Register/FeatureServer/4` where `registry_project_id = <submitted project id>`
+4. `Yukon_Project_Register/FeatureServer/5` where `registry_project_id = <submitted project id>`
 
 Any matching Shape within `DUPLICATE_TOLERANCE_M` metres returns `409` and no
 features are appended.
@@ -331,7 +331,7 @@ approved the OAuth code, not the account running `uvicorn`.
 Configuration:
 
 ```dotenv
-PORTAL_URL=https://maps.gov.yk.ca/portal
+PORTAL_URL=https://maps.example.gov/portal
 # The default matches scripts/arcgis_iwa_token_check.py's browser SSO path.
 ARCGIS_OAUTH_CLIENT_ID=arcgispro
 ```
