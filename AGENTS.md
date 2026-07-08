@@ -6,6 +6,7 @@ See [docs/agent-workflows.md](docs/agent-workflows.md) for which agent dot-dir
 files are shared in this repository and which local/private files must stay out
 of git.
 
+Don't use em-dashes.
 
 > **Architecture in one line:** Issues live in a local Dolt database
 > (`.beads/dolt/`); cross-machine sync uses `bd dolt push/pull` (a
@@ -130,4 +131,3 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
-

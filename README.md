@@ -1,7 +1,7 @@
 # arcgis-uploader
 
-A small web form where users drag-and-drop spatial data — a zipped shapefile,
-GeoPackage, GeoJSON, KML or FlatGeobuf — and enter a project ID. The service
+A small web form where users drag-and-drop spatial data - a zipped shapefile,
+GeoPackage, GeoJSON, KML or FlatGeobuf - and enter a project ID. The service
 strips **all** attributes from the features, tags each one with the project ID
 and the uploading user, and appends them to an ArcGIS Enterprise hosted
 feature service.
