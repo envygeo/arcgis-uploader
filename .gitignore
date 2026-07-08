@@ -10,3 +10,13 @@ dist/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Agent-local/private workflow state and overrides
+.agents/private/
+.agents/tmp/
+.claude/settings.local.json
+.codex/config.local.toml
+.codex/sessions/
+.codex/history*
+.codex/logs/
+.codex/tmp/

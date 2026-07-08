@@ -2,6 +2,11 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+See [docs/agent-workflows.md](docs/agent-workflows.md) for which agent dot-dir
+files are shared in this repository and which local/private files must stay out
+of git.
+
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
@@ -75,3 +80,4 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
