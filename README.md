@@ -398,3 +398,12 @@ Leaflet from a CDN - vendor it into `static/` for intranet use), commented for
 porting. A MudBlazor client would use `MudFileUpload` +
 `HttpClient.PostAsync` with `MultipartFormDataContent` - the requests are the
 same.
+
+## License
+
+This repository's source code and associated documentation are licensed under
+the [MIT License](LICENSE).
+
+See [docs/licensing.md](docs/licensing.md) for the project-specific rationale
+and the rule of thumb for using MIT alongside Open Government Licence - Yukon
+material in public Government of Yukon projects.

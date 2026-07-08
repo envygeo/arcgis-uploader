@@ -3,6 +3,7 @@ name = "arcgis-uploader"
 version = "0.1.0"
 description = "Reference web form: upload spatial data, strip attributes, tag with a project ID, append to an ArcGIS Enterprise hosted feature service"
 requires-python = ">=3.10"
+license = "MIT"
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
