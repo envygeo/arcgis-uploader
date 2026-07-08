@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "arcup",
+  "project_id": "ad98c87c-d3d8-4083-a676-8ec3793576a3"
+}
