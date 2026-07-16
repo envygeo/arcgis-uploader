@@ -552,6 +552,7 @@ def _append(
     client: ArcGISClient,
 ) -> dict:
     appended: dict[str, int] = {}
+    feature_layer_urls: dict[str, str] = {}
     skipped_no_target: dict[str, int] = {}
     sample_feature: dict | None = None
     username_attribute = _username_attribute_value(username)
@@ -628,6 +629,7 @@ def _append(
                     f"append refused after checking {checked}."
                 )
         appended[label] = client.add_features(layer_url, features)
+        feature_layer_urls[label] = _sanitize_debug_url(layer_url)
 
     result = {
         "project_id": project_id,
@@ -635,6 +637,7 @@ def _append(
         "username_attribute_value": username_attribute,
         "layers_read": buckets.layers,
         "features_appended": appended,
+        "feature_layer_urls": feature_layer_urls,
         "features_skipped_no_target_layer": skipped_no_target,
         "features_skipped_invalid": buckets.skipped,
         "dry_run": settings.dry_run,

@@ -29,6 +29,7 @@
 </head>
 <body>
 <main>
+  <nav class="parent-nav"><a href="../">go up one parent dir</a></nav>
   <h1>Project geometry uploader <span class="hint">example 3: preview + duplicate check</span></h1>
   <p class="lede">
     Choose a spatial file to see its geometry and attributes before anything
@@ -347,8 +348,15 @@
 
   function showSummary(data) {
     const lines = Object.entries(data.features_appended)
-      .map(([type, n]) => `${n} ${type} feature(s)` +
-                          (data.dry_run ? " (dry run — not written)" : " appended"));
+      .map(([type, n]) => {
+        const url = data.feature_layer_urls?.[type];
+        const destination = url
+          ? ` - <a href="${escapeHtml(url)}" target="_blank" rel="noopener">view ${escapeHtml(type)} feature layer</a>`
+          : "";
+        return `${n} ${type} feature(s)` +
+               (data.dry_run ? " (dry run — not written)" : " appended") +
+               destination;
+      });
     for (const [type, n] of Object.entries(data.features_skipped_no_target_layer))
       lines.push(`${n} ${type} feature(s) skipped — no target layer for this type`);
     if (data.features_skipped_invalid)

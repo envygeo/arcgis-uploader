@@ -28,6 +28,7 @@ def test_geojson_upload_dry_run(client):
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["features_appended"] == {"point": 1, "line": 1}
+    assert body["feature_layer_urls"] == {}
     assert body["dry_run"] is True
 
 
@@ -45,6 +46,15 @@ def test_example_pages_exist(client):
         assert response.status_code == 200
         assert expected in response.text
 
+
+def test_every_page_links_to_parent_directory(client):
+    for path in (
+        "/", "/example1", "/preview", "/example2", "/example3", "/example4"
+    ):
+        response = client.get(path)
+
+        assert response.status_code == 200
+        assert '<a href="../">go up one parent dir</a>' in response.text
 
 def test_index_links_to_all_example_flows(client):
     response = client.get("/")
@@ -71,6 +81,16 @@ def test_example_pages_link_to_allowlisted_debug_info(client):
         assert response.status_code == 200
         assert 'href="api/debug-info"' in response.text
         assert "Show debug info" in response.text
+
+
+def test_example_pages_link_to_appended_feature_layers(client):
+    for path in ("/example1", "/example2", "/example3", "/example4"):
+        response = client.get(path)
+
+        assert response.status_code == 200
+        assert "data.feature_layer_urls?.[type]" in response.text
+        assert "view ${escapeHtml(type)} feature layer" in response.text
+        assert 'target="_blank" rel="noopener"' in response.text
 
 
 def test_debug_info_reports_effective_settings_without_secrets(monkeypatch):
@@ -379,6 +399,9 @@ def test_append_adds_default_z_for_target_layer_with_z():
     result = _append(buckets, "2026-0042", "tester", settings, client)
 
     assert result["features_appended"] == {"polygon": 1}
+    assert result["feature_layer_urls"] == {
+        "polygon": "https://example.test/layer/0"
+    }
     geometry = client.features[0]["geometry"]
     assert client.features[0]["attributes"]["uploaded_by"] == "Uploaded by tester."
     assert geometry["hasZ"] is True

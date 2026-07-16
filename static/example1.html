@@ -24,6 +24,7 @@
     </head>
     <body class="example-basic">
         <main>
+            <nav class="parent-nav"><a href="../">go up one parent dir</a></nav>
             <h1>
                 Project geometry uploader
                 <span class="hint">example 1: one-step form</span>
@@ -197,11 +198,17 @@
 
             function showSummary(data) {
                 const lines = Object.entries(data.features_appended).map(
-                    ([type, n]) =>
-                        `${n} ${type} feature(s)` +
-                        (data.dry_run
-                            ? " (dry run — not written)"
-                            : " appended"),
+                    ([type, n]) => {
+                        const url = data.feature_layer_urls?.[type];
+                        const destination = url
+                            ? ` - <a href="${escapeHtml(url)}" target="_blank" rel="noopener">view ${escapeHtml(type)} feature layer</a>`
+                            : "";
+                        return `${n} ${type} feature(s)` +
+                            (data.dry_run
+                                ? " (dry run — not written)"
+                                : " appended") +
+                            destination;
+                    },
                 );
                 for (const [type, n] of Object.entries(
                     data.features_skipped_no_target_layer,

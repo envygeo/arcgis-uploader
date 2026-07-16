@@ -236,6 +236,10 @@ Successful response (`200`):
   "username_attribute_value": "Uploaded by KLONDIKE\\alex.",
   "layers_read": ["upload.zip:roads", "upload.zip:sites"],
   "features_appended": { "point": 12, "line": 340 },
+  "feature_layer_urls": {
+    "point": "https://maps.example.gov/server/rest/services/Hosted/Projects/FeatureServer/0",
+    "line": "https://maps.example.gov/server/rest/services/Hosted/Projects/FeatureServer/1"
+  },
   "features_skipped_no_target_layer": { "polygon": 2 },
   "features_skipped_invalid": 1,
   "dry_run": false
