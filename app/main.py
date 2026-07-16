@@ -15,7 +15,15 @@ import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse
+from urllib.parse import (
+    parse_qs,
+    unquote_plus,
+    urlencode,
+    urljoin,
+    urlparse,
+    urlsplit,
+    urlunsplit,
+)
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -24,7 +32,14 @@ from pyproj.exceptions import CRSError
 import requests
 
 from .arcgis import ArcGISClient, ArcGISError
-from .config import FAMILY_LABELS, Settings, load_settings
+from .config import (
+    ESRI_POINT,
+    ESRI_POLYGON,
+    ESRI_POLYLINE,
+    FAMILY_LABELS,
+    Settings,
+    load_settings,
+)
 from .duplicates import count_duplicate_shapes
 from .esri import to_esri_geometry
 from .ingest import ACCEPTED_UPLOADS, GeometryBuckets, IngestError, collect_geometries
@@ -38,6 +53,85 @@ logger = logging.getLogger("arcgis-uploader")
 USERNAME_ATTRIBUTE_PREFIX = "Uploaded by "
 USERNAME_ATTRIBUTE_SUFFIX = "."
 USERNAME_ATTRIBUTE_MAX_LEN = 128
+
+SENSITIVE_DEBUG_QUERY_KEYS = {
+    "token",
+    "access_token",
+    "api_key",
+    "key",
+    "password",
+    "secret",
+    "client_secret",
+    "signature",
+}
+
+
+def _sanitize_debug_url(value: str) -> str:
+    """Remove credentials and sensitive query values from a displayed URL."""
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return "[invalid URL omitted]"
+
+    netloc = parts.netloc.rsplit("@", 1)[-1]
+    sanitized_query: list[str] = []
+    for item in parts.query.split("&") if parts.query else ():
+        raw_key, separator, raw_value = item.partition("=")
+        if unquote_plus(raw_key).lower() in SENSITIVE_DEBUG_QUERY_KEYS:
+            sanitized_query.append(f"{raw_key}=REDACTED")
+        else:
+            sanitized_query.append(
+                f"{raw_key}{separator}{raw_value}" if separator else raw_key
+            )
+    return urlunsplit(
+        (
+            parts.scheme,
+            netloc,
+            parts.path,
+            "&".join(sanitized_query),
+            parts.fragment,
+        )
+    )
+
+
+def _debug_settings(settings: Settings) -> dict[str, object]:
+    """Return the effective public configuration as an explicit allowlist."""
+    return {
+        "PORTAL_URL": _sanitize_debug_url(settings.portal_url),
+        "ARCGIS_AUTH_MODE": settings.arcgis_auth_mode,
+        "ARCGIS_USERNAME": settings.username,
+        "ARCGIS_PASSWORD": {"set": bool(settings.password)},
+        "ARCGIS_OAUTH_CLIENT_ID": settings.oauth_client_id,
+        "GENERATE_TOKEN_URL": _sanitize_debug_url(settings.token_url),
+        "TARGET_LAYER_POINT": _sanitize_debug_url(
+            settings.layer_urls.get(ESRI_POINT, "")
+        ),
+        "TARGET_LAYER_POLYLINE": _sanitize_debug_url(
+            settings.layer_urls.get(ESRI_POLYLINE, "")
+        ),
+        "TARGET_LAYER_POLYGON": _sanitize_debug_url(
+            settings.layer_urls.get(ESRI_POLYGON, "")
+        ),
+        "PROJECT_ID_FIELD": settings.project_id_field,
+        "USERNAME_FIELD": settings.username_field,
+        "USERNAME_HEADER": settings.username_header,
+        "ALLOW_CLIENT_USERNAME": settings.allow_client_username,
+        "PROJECT_ID_PATTERN": settings.project_id_pattern,
+        "DUPLICATE_DETECTION": settings.duplicate_detection,
+        "DUPLICATE_ID_FIELD": (
+            settings.duplicate_id_field or settings.project_id_field
+        ),
+        "DUPLICATE_TOLERANCE_M": settings.duplicate_tolerance_m,
+        "DUPLICATE_COMPARE_LAYERS": [
+            {"id_field": layer.id_field, "url": _sanitize_debug_url(layer.url)}
+            for layer in settings.duplicate_compare_layers
+        ],
+        "MAX_UPLOAD_MB": settings.max_upload_mb,
+        "DEFAULT_SOURCE_EPSG": settings.default_source_epsg,
+        "SHAPE_RESTORE_SHX": settings.shape_restore_shx,
+        "DRY_RUN": settings.dry_run,
+        "BASEMAP_URL": _sanitize_debug_url(settings.basemap_url),
+    }
 
 
 class DuplicateAppendError(ValueError):
@@ -65,6 +159,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return iwa_client
 
     @app.get("/", include_in_schema=False)
+    def index_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/examples.css", include_in_schema=False)
+    def examples_stylesheet() -> FileResponse:
+        return FileResponse(STATIC_DIR / "examples.css", media_type="text/css")
+
     @app.get("/example1", include_in_schema=False)
     def example1_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "example1.html")
@@ -103,6 +204,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "arcgis_auth_mode": settings.arcgis_auth_mode,
             "oauth_client_id": settings.oauth_client_id,
         }
+
+    @app.get("/api/debug-info")
+    def debug_info() -> dict[str, object]:
+        return _debug_settings(settings)
 
     @app.get("/api/oauth-info")
     def oauth_info() -> dict:

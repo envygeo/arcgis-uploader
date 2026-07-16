@@ -5,8 +5,9 @@ See .env.example for documentation of every variable.
 from __future__ import annotations
 
 import json
+import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -67,6 +68,17 @@ class Settings:
     # password = ARCGIS_USERNAME/ARCGIS_PASSWORD, iwa = Windows SSPI/IWA
     # using the process identity, anonymous = do not request a token.
     arcgis_auth_mode: str = "password"
+    # GDAL is configured at process startup to rebuild missing shapefile indexes.
+    shape_restore_shx: str = field(default="YES", init=False)
+
+    def __post_init__(self) -> None:
+        if (
+            not math.isfinite(self.duplicate_tolerance_m)
+            or self.duplicate_tolerance_m < 0
+        ):
+            raise ValueError(
+                "DUPLICATE_TOLERANCE_M must be a finite, non-negative number."
+            )
 
 
 def load_settings() -> Settings:

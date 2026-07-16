@@ -1,6 +1,10 @@
 import pytest
 
-from app.config import normalize_arcgis_auth_mode, parse_duplicate_compare_layers
+from app.config import (
+    Settings,
+    normalize_arcgis_auth_mode,
+    parse_duplicate_compare_layers,
+)
 
 
 def test_parse_duplicate_compare_layers_json():
@@ -49,3 +53,42 @@ def test_normalize_arcgis_auth_mode_aliases():
 def test_normalize_arcgis_auth_mode_rejects_unknown():
     with pytest.raises(ValueError, match="ARCGIS_AUTH_MODE"):
         normalize_arcgis_auth_mode("kerberos-only")
+
+
+@pytest.mark.parametrize(
+    "tolerance",
+    [float("nan"), float("inf"), float("-inf"), -0.01],
+)
+def test_settings_reject_invalid_duplicate_tolerance(tolerance):
+    with pytest.raises(ValueError, match="DUPLICATE_TOLERANCE_M"):
+        Settings(
+            portal_url="",
+            username="",
+            password="",
+            token_url="",
+            layer_urls={},
+            project_id_field="project_id",
+            project_id_pattern=".*",
+            max_upload_mb=10,
+            default_source_epsg=None,
+            dry_run=True,
+            duplicate_tolerance_m=tolerance,
+        )
+
+
+def test_settings_accept_zero_duplicate_tolerance():
+    settings = Settings(
+        portal_url="",
+        username="",
+        password="",
+        token_url="",
+        layer_urls={},
+        project_id_field="project_id",
+        project_id_pattern=".*",
+        max_upload_mb=10,
+        default_source_epsg=None,
+        dry_run=True,
+        duplicate_tolerance_m=0,
+    )
+
+    assert settings.duplicate_tolerance_m == 0

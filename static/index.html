@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArcGIS uploader examples</title>
+  <style>
+    :root {
+      --accent: #1c6e8c;
+      --accent-bg: #e3f2f7;
+      --border: #cfd8dc;
+      --text: #263238;
+      --muted: #546e7a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #f5f7f8;
+    }
+    main {
+      max-width: 58rem;
+      margin: 3rem auto;
+      padding: 0 1rem;
+    }
+    h1 { margin-bottom: .5rem; font-size: 1.6rem; }
+    .lede {
+      max-width: 46rem;
+      margin-top: 0;
+      color: var(--muted);
+    }
+    .examples {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .card h2 { margin: 0; font-size: 1.1rem; }
+    .card p {
+      flex: 1;
+      margin: .75rem 0 1.25rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .card a {
+      align-self: flex-start;
+      padding: .6rem .85rem;
+      color: #fff;
+      background: var(--accent);
+      border-radius: 6px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .card a:hover { filter: brightness(.9); }
+    .card a:focus-visible {
+      outline: 3px solid var(--accent-bg);
+      outline-offset: 3px;
+    }
+    .step {
+      display: inline-block;
+      margin-bottom: .5rem;
+      color: var(--accent);
+      font-size: .85rem;
+      font-weight: 600;
+    }
+    footer {
+      margin-top: 2rem;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ArcGIS uploader examples</h1>
+  <p class="lede">
+    Choose a reference client based on the review and authentication flow you
+    need. Each example accepts supported spatial files, removes their original
+    attributes, and adds the configured project ID and uploading user before
+    appending features to ArcGIS.
+  </p>
+
+  <section class="examples" aria-label="Example clients">
+    <article class="card">
+      <span class="step">Example 1</span>
+      <h2>One-step upload</h2>
+      <p>
+        Pick a file, enter a project ID and username, then upload and append in
+        a single request. Start here for the simplest client integration.
+      </p>
+      <a href="example1">Open one-step upload</a>
+    </article>
+
+    <article class="card">
+      <span class="step">Example 2</span>
+      <h2>Preview and confirm</h2>
+      <p>
+        Preview geometry on a map and inspect the attributes that will be
+        removed. Confirm the upload only after reviewing the file.
+      </p>
+      <a href="example2">Open preview flow</a>
+    </article>
+
+    <article class="card">
+      <span class="step">Example 3</span>
+      <h2>Preview with duplicate checks</h2>
+      <p>
+        Use the preview-and-confirm flow while checking the polygon target and
+        configured read-only layers for duplicate project geometry.
+      </p>
+      <a href="example3">Open duplicate-check flow</a>
+    </article>
+
+    <article class="card">
+      <span class="step">Example 4</span>
+      <h2>Browser SSO upload</h2>
+      <p>
+        Preview, check for duplicates, and append using the ArcGIS user who
+        signs in through the browser SSO/OAuth flow rather than server credentials.
+      </p>
+      <a href="example4">Open browser SSO flow</a>
+    </article>
+  </section>
+
+  <footer>
+    These framework-free pages are reference implementations for clients on
+    other platforms.
+  </footer>
+</main>
+</body>
+</html>
