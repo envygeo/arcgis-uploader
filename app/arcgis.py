@@ -321,9 +321,14 @@ class ArcGISClient:
         return body
 
     def _with_auth_context(self, message: str) -> str:
-        if self.settings.arcgis_auth_mode != "iwa":
-            return message
-        return f"ArcGIS IWA attempted Windows identity {windows_identity()}: {message}"
+        auth_mode = self.settings.arcgis_auth_mode
+        if auth_mode == "iwa":
+            identity = f"Windows identity {windows_identity()}"
+        elif auth_mode == "anonymous" or not self.settings.username:
+            identity = "anonymous user"
+        else:
+            identity = f"configured user {self.settings.username}"
+        return f"ArcGIS authentication attempted {identity}: {message}"
 
 
 def windows_identity() -> str:

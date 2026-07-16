@@ -118,5 +118,37 @@ def test_iwa_permission_error_reports_attempted_windows_identity(monkeypatch):
         client.layer_info("https://maps.example.test/server/rest/services/x/FeatureServer/0")
 
     message = str(exc_info.value)
-    assert "ArcGIS IWA attempted Windows identity klondike\\jdoe / jdoe@example.gov" in message
+    assert (
+        "ArcGIS authentication attempted Windows identity "
+        "klondike\\jdoe / jdoe@example.gov" in message
+    )
+    assert "User does not have permissions" in message
+
+
+def test_password_permission_error_reports_configured_username(monkeypatch):
+    monkeypatch.setattr("app.arcgis.requests.Session", FakeDeniedSession)
+
+    client = ArcGISClient(make_settings(arcgis_auth_mode="password"))
+    client._token = "password-token"
+    client._token_expires = time.time() + 3600
+
+    with pytest.raises(ArcGISError) as exc_info:
+        client.layer_info("https://maps.example.test/server/rest/services/x/FeatureServer/0")
+
+    message = str(exc_info.value)
+    assert "ArcGIS authentication attempted configured user svc_user" in message
+    assert "User does not have permissions" in message
+    assert "secret" not in message
+
+
+def test_anonymous_permission_error_reports_anonymous_user(monkeypatch):
+    monkeypatch.setattr("app.arcgis.requests.Session", FakeDeniedSession)
+
+    client = ArcGISClient(make_settings(arcgis_auth_mode="anonymous", username=""))
+
+    with pytest.raises(ArcGISError) as exc_info:
+        client.layer_info("https://maps.example.test/server/rest/services/x/FeatureServer/0")
+
+    message = str(exc_info.value)
+    assert "ArcGIS authentication attempted anonymous user" in message
     assert "User does not have permissions" in message
