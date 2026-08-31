@@ -19,6 +19,13 @@ Don't use em-dashes.
 > source of truth; don't `bd import` during normal operation; don't
 > reach for third-party Dolt hosting before trying the default).
 
+## Active completion profile
+
+This repository opts into the **team-maintainer** profile. After completing
+issue-scoped work, agents may close the Beads issue, run quality gates, commit
+the completed changes, sync Beads with `bd dolt push`, and push the Git branch
+without waiting for separate approval. Keep unrelated working-tree changes out
+of the commit. An explicit instruction not to commit, sync, or push still wins.
 ## Quick Reference
 
 ```bash
@@ -58,7 +65,14 @@ cp -rf source dest          # NOT: cp -r source dest
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
 
-### Quick Reference
+### Active completion profile
+
+This repository opts into the **team-maintainer** profile. After completing
+issue-scoped work, agents may close the Beads issue, run quality gates, commit
+the completed changes, sync Beads with `bd dolt push`, and push the Git branch
+without waiting for separate approval. Keep unrelated working-tree changes out
+of the commit. An explicit instruction not to commit, sync, or push still wins.
+## Quick Reference
 
 ```bash
 bd ready              # Find available work
@@ -113,7 +127,14 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 Use Beads (`bd`) for durable task tracking in repositories that include it. Use the `beads` skill at `.agents/skills/beads/SKILL.md` (project install) or `~/.agents/skills/beads/SKILL.md` (global install) for Beads workflow guidance, then use the `bd` CLI for issue operations.
 
-### Quick Reference
+### Active completion profile
+
+This repository opts into the **team-maintainer** profile. After completing
+issue-scoped work, agents may close the Beads issue, run quality gates, commit
+the completed changes, sync Beads with `bd dolt push`, and push the Git branch
+without waiting for separate approval. Keep unrelated working-tree changes out
+of the commit. An explicit instruction not to commit, sync, or push still wins.
+## Quick Reference
 
 ```bash
 bd ready                # Find available work
