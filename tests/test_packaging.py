@@ -26,6 +26,7 @@ def test_release_builder_separates_server_and_embed_files(tmp_path: Path) -> Non
     with zipfile.ZipFile(server_path) as server_zip:
         server_names = set(server_zip.namelist())
         server_config = server_zip.read("config.env.example").decode("utf-8")
+        deploy_readme = server_zip.read("DEPLOY.md").decode("utf-8")
 
     assert "app/main.py" in server_names
     assert "static/example3.html" in server_names
@@ -35,6 +36,8 @@ def test_release_builder_separates_server_and_embed_files(tmp_path: Path) -> Non
     assert "DEPLOY.md" in server_names
     assert "config.env.example" in server_names
     assert "ALLOW_CLIENT_USERNAME=false" in server_config
+    assert "without editing `app/main.py`" in deploy_readme
+    assert 'fetch("api/info")' in deploy_readme
     assert not any(name.startswith("tests/") for name in server_names)
     assert not any(name.startswith("scripts/") for name in server_names)
     assert ".env" not in server_names

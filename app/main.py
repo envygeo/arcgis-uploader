@@ -26,7 +26,7 @@ from urllib.parse import (
 )
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pyproj import CRS
 from pyproj.exceptions import CRSError
 import requests
@@ -157,38 +157,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
         return iwa_client
-
-    @app.get("/", include_in_schema=False)
-    def index_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
-
-    @app.get("/examples.css", include_in_schema=False)
-    def examples_stylesheet() -> FileResponse:
-        return FileResponse(STATIC_DIR / "examples.css", media_type="text/css")
-
-    @app.get("/query-prefill.js", include_in_schema=False)
-    def query_prefill_script() -> FileResponse:
-        return FileResponse(
-            STATIC_DIR / "query-prefill.js",
-            media_type="application/javascript",
-        )
-
-    @app.get("/example1", include_in_schema=False)
-    def example1_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "example1.html")
-
-    @app.get("/preview", include_in_schema=False)
-    @app.get("/example2", include_in_schema=False)
-    def example2_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "example2.html")
-
-    @app.get("/example3", include_in_schema=False)
-    def example3_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "example3.html")
-
-    @app.get("/example4", include_in_schema=False)
-    def example4_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "example4.html")
 
     @app.get("/api/info")
     def info() -> dict:
@@ -335,6 +303,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             replace(settings, arcgis_auth_mode="password", username="", password=""),
             oauth_client,
         )
+
+    # Keep this mount last. Starlette checks routes in registration order, so
+    # the API, authentication, debug, and documentation routes take priority
+    # over files with the same paths beneath static/.
+    app.mount(
+        "/",
+        StaticFiles(directory=STATIC_DIR, html=True),
+        name="frontend",
+    )
 
     return app
 

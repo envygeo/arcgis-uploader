@@ -35,11 +35,10 @@ def test_geojson_upload_dry_run(client):
 def test_example_pages_exist(client):
     pages = {
         "/": "ArcGIS uploader examples",
-        "/example1": "example 1: one-step form",
-        "/preview": "example 2: preview &amp; confirm",
-        "/example2": "example 2: preview &amp; confirm",
-        "/example3": "example 3: preview + duplicate check",
-        "/example4": "example 4: browser SSO token",
+        "/example1.html": "example 1: one-step form",
+        "/example2.html": "example 2: preview &amp; confirm",
+        "/example3.html": "example 3: preview + duplicate check",
+        "/example4.html": "example 4: browser SSO token",
     }
     for path, expected in pages.items():
         response = client.get(path)
@@ -49,7 +48,11 @@ def test_example_pages_exist(client):
 
 def test_every_page_links_to_parent_directory(client):
     for path in (
-        "/", "/example1", "/preview", "/example2", "/example3", "/example4"
+        "/",
+        "/example1.html",
+        "/example2.html",
+        "/example3.html",
+        "/example4.html",
     ):
         response = client.get(path)
 
@@ -61,7 +64,7 @@ def test_index_links_to_all_example_flows(client):
 
     assert response.status_code == 200
     for number in range(1, 5):
-        assert f' href="example{number}"' in response.text
+        assert f' href="example{number}.html"' in response.text
         assert f"Example {number}" in response.text
 
 
@@ -78,14 +81,19 @@ def test_query_prefill_script_is_served_and_used_by_example_pages(client):
     script = client.get("/query-prefill.js")
 
     assert script.status_code == 200
-    assert script.headers["content-type"].startswith("application/javascript")
+    assert "javascript" in script.headers["content-type"]
     assert 'project_id: "project-id"' in script.text
     assert 'username: "username"' in script.text
     assert "new URLSearchParams(search)" in script.text
     assert "if (!params.has(parameter)) continue" in script.text
     assert "field.value = params.get(parameter)" in script.text
 
-    for path in ("/example1", "/example2", "/example3", "/example4"):
+    for path in (
+        "/example1.html",
+        "/example2.html",
+        "/example3.html",
+        "/example4.html",
+    ):
         response = client.get(path)
 
         assert response.status_code == 200
@@ -93,7 +101,12 @@ def test_query_prefill_script_is_served_and_used_by_example_pages(client):
 
 
 def test_example_pages_link_to_allowlisted_debug_info(client):
-    for path in ("/example1", "/example2", "/example3", "/example4"):
+    for path in (
+        "/example1.html",
+        "/example2.html",
+        "/example3.html",
+        "/example4.html",
+    ):
         response = client.get(path)
 
         assert response.status_code == 200
@@ -102,7 +115,12 @@ def test_example_pages_link_to_allowlisted_debug_info(client):
 
 
 def test_example_pages_link_to_appended_feature_layers(client):
-    for path in ("/example1", "/example2", "/example3", "/example4"):
+    for path in (
+        "/example1.html",
+        "/example2.html",
+        "/example3.html",
+        "/example4.html",
+    ):
         response = client.get(path)
 
         assert response.status_code == 200
@@ -287,7 +305,7 @@ def test_debug_info_reports_unset_password(client):
 
 
 def test_example4_does_not_send_user_typed_username(client):
-    response = client.get("/example4")
+    response = client.get("/example4.html")
 
     assert response.status_code == 200
     assert 'name="username"' not in response.text

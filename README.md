@@ -147,6 +147,26 @@ to ArcGIS, and the response includes a `sample_feature` showing exactly what
 *would* be posted. Set the `TARGET_LAYER_*` variables and `DRY_RUN=false` to
 go live.
 
+### Replace the bundled frontend
+
+FastAPI serves `static/index.html` at `/` and serves every other file beneath
+`static/` at its matching URL. A deployment can replace `static/index.html`,
+add nested assets such as `static/assets/app.js`, or replace the whole
+`static/` directory. Do not add routes to `app/main.py` for frontend files.
+The server registers `/api`, authentication, debug, and OpenAPI routes before
+the static mount, so a frontend file cannot replace those server endpoints.
+
+Keep application links and requests relative when a reverse proxy publishes
+the service beneath a subpath. For example, use `src="assets/app.js"` and
+`fetch("api/info")`, not URLs beginning with `/`. The same files then work at
+both `/` and a path such as `/services/uploader/`.
+
+The canonical bundled example pages are `example1.html` through
+`example4.html`. Static compatibility pages keep the documented `/example1`,
+`/example2`, `/preview`, `/example3`, and `/example4` browser URLs working.
+A replacement frontend may omit those compatibility directories if it does
+not use the example URLs.
+
 Run the tests with `uv run pytest` (or `pytest` in the activated venv). The browser-side query prefill test requires Node.js on `PATH` and fails if Node.js is unavailable.
 
 The packaging scripts produce separate artifacts for separate audiences:

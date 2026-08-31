@@ -54,6 +54,17 @@ uv run --no-dev uvicorn app.main:app --host 127.0.0.1 --port 8000
 Put the service behind the web host's HTTPS reverse proxy and authentication.
 Do not expose the uvicorn development process directly to the internet.
 
+## Replace the frontend
+
+The server serves `static/index.html` at `/` and maps nested files beneath
+`static/` to the same URL paths. Replace `static/index.html` and add or replace
+assets in `static/` without editing `app/main.py`. Keep browser links and API
+requests relative, such as `src="assets/app.js"` and `fetch("api/info")`, so
+the frontend also works when the reverse proxy publishes this service beneath
+a subpath.
+
+Server routes take priority over the final static-file mount. Files beneath
+`static/api/` cannot replace API, authentication, debug, or OpenAPI routes.
 The iframe page is `/example3`. Its required application endpoints are:
 
 - `GET /examples.css`
