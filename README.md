@@ -217,6 +217,37 @@ Use `/` or `/example1` when the client should choose a file, enter a project
 ID, and append immediately. An Example 1 style client needs exactly one
 request:
 
+The bundled forms can also prefill those inputs from the uploader page's query
+string. Use the exact, case-sensitive parameter names `project_id` and
+`username`:
+
+```text
+https://uploader.example.gov/example1?project_id=EA-74&username=KLONDIKE%5Cmatt
+```
+
+This works on examples 1 through 3. Example 4 accepts `project_id` but gets its
+username from the ArcGIS browser sign-in instead. A query string on the parent
+Blazor page is not inherited by an embedded iframe. The host must append these
+parameters to the iframe's `src`. In Blazor, use `QueryHelpers.AddQueryString`
+so spaces, backslashes, and other characters are encoded correctly:
+
+```csharp
+@using Microsoft.AspNetCore.WebUtilities
+
+var uploaderUrl = QueryHelpers.AddQueryString(
+    "https://uploader.example.gov/example1",
+    new Dictionary<string, string?>
+    {
+        ["project_id"] = project.ProjectNumber,
+        ["username"] = User.Identity?.Name,
+    });
+```
+
+The values prefill editable fields and are included in the existing upload
+request. They are convenience data, not trusted identity. If the username is
+used for auditing, prefer the authenticated `USERNAME_HEADER` path described
+under [Shared detail: who did the upload?](#shared-detail-who-did-the-upload).
+
 ```
 POST /api/upload
 Content-Type: multipart/form-data

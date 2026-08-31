@@ -74,6 +74,24 @@ def test_shared_example_stylesheet_is_served(client):
     assert ".debug-link" in response.text
 
 
+def test_query_prefill_script_is_served_and_used_by_example_pages(client):
+    script = client.get("/query-prefill.js")
+
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("application/javascript")
+    assert 'project_id: "project-id"' in script.text
+    assert 'username: "username"' in script.text
+    assert "new URLSearchParams(search)" in script.text
+    assert "if (!params.has(parameter)) continue" in script.text
+    assert "field.value = params.get(parameter)" in script.text
+
+    for path in ("/example1", "/example2", "/example3", "/example4"):
+        response = client.get(path)
+
+        assert response.status_code == 200
+        assert '<script src="query-prefill.js"></script>' in response.text
+
+
 def test_example_pages_link_to_allowlisted_debug_info(client):
     for path in ("/example1", "/example2", "/example3", "/example4"):
         response = client.get(path)

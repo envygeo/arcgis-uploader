@@ -166,6 +166,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def examples_stylesheet() -> FileResponse:
         return FileResponse(STATIC_DIR / "examples.css", media_type="text/css")
 
+    @app.get("/query-prefill.js", include_in_schema=False)
+    def query_prefill_script() -> FileResponse:
+        return FileResponse(
+            STATIC_DIR / "query-prefill.js",
+            media_type="application/javascript",
+        )
+
     @app.get("/example1", include_in_schema=False)
     def example1_page() -> FileResponse:
         return FileResponse(STATIC_DIR / "example1.html")
