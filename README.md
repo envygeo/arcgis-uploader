@@ -13,7 +13,7 @@ Four example clients are included:
 
 | | Page | Flow |
 |---|---|---|
-| **Example 1** | `/` or `/example1` ([static/example1.html](static/example1.html)) | one step: pick file → upload & append |
+| **Example 1** | `/example1` ([static/example1.html](static/example1.html)) | one step: pick file → upload & append |
 | **Example 2** | `/example2` or `/preview` ([static/example2.html](static/example2.html)) | pick file → **preview map + attribute table** → confirm → append |
 | **Example 3** | `/example3` ([static/example3.html](static/example3.html)) | example 2 flow, with duplicate checks against the polygon target **and** read-only compare layers |
 | **Example 4** | `/example4` ([static/example4.html](static/example4.html)) | example 3 flow, but ArcGIS sees the browser SSO/OAuth user instead of `.env` username/password or the uvicorn process account |
@@ -147,7 +147,7 @@ to ArcGIS, and the response includes a `sample_feature` showing exactly what
 *would* be posted. Set the `TARGET_LAYER_*` variables and `DRY_RUN=false` to
 go live.
 
-Run the tests with `uv run pytest` (or `pytest` in the activated venv).
+Run the tests with `uv run pytest` (or `pytest` in the activated venv). The browser-side query prefill test requires Node.js on `PATH` and fails if Node.js is unavailable.
 
 To share the project, `python scripts/make_package.py` builds
 `dist/arcgis-uploader-<date>.zip` — an emailable package of just the source,
@@ -213,9 +213,9 @@ The examples build on each other in this order:
 
 ### Example 1: one-step upload and append
 
-Use `/` or `/example1` when the client should choose a file, enter a project
-ID, and append immediately. An Example 1 style client needs exactly one
-request:
+Use `/example1` when the client should choose a file, enter a project ID,
+and append immediately. The root path `/` is the example-page index, not an
+upload form. An Example 1 style client needs exactly one request:
 
 The bundled forms can also prefill those inputs from the uploader page's query
 string. Use the exact, case-sensitive parameter names `project_id` and
@@ -231,22 +231,43 @@ Blazor page is not inherited by an embedded iframe. The host must append these
 parameters to the iframe's `src`. In Blazor, use `QueryHelpers.AddQueryString`
 so spaces, backslashes, and other characters are encoded correctly:
 
-```csharp
+```razor
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.WebUtilities
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
-var uploaderUrl = QueryHelpers.AddQueryString(
-    "https://uploader.example.gov/example1",
-    new Dictionary<string, string?>
+<iframe src="@uploaderUrl" title="Project geometry uploader"></iframe>
+
+@code {
+    [Parameter]
+    public string ProjectId { get; set; } = "";
+
+    private string uploaderUrl = "";
+
+    protected override async Task OnParametersSetAsync()
     {
-        ["project_id"] = project.ProjectNumber,
-        ["username"] = User.Identity?.Name,
-    });
+        var authState = await AuthenticationStateProvider
+            .GetAuthenticationStateAsync();
+        uploaderUrl = QueryHelpers.AddQueryString(
+            "https://uploader.example.gov/example1",
+            new Dictionary<string, string?>
+            {
+                ["project_id"] = ProjectId,
+                ["username"] = authState.User.Identity?.Name,
+            });
+    }
+}
 ```
 
 The values prefill editable fields and are included in the existing upload
-request. They are convenience data, not trusted identity. If the username is
-used for auditing, prefer the authenticated `USERNAME_HEADER` path described
-under [Shared detail: who did the upload?](#shared-detail-who-did-the-upload).
+request. Query values can appear in access logs, browser history, diagnostics,
+and copied URLs. They are convenience data, not trusted identity.
+
+If the username is used for auditing, omit it from the query string and use the
+authenticated `USERNAME_HEADER` path described under
+[Shared detail: who did the upload?](#shared-detail-who-did-the-upload). Set
+`ALLOW_CLIENT_USERNAME=false` so a submitted form value cannot take precedence
+over that header.
 
 ```
 POST /api/upload
