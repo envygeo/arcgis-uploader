@@ -149,10 +149,24 @@ go live.
 
 Run the tests with `uv run pytest` (or `pytest` in the activated venv). The browser-side query prefill test requires Node.js on `PATH` and fails if Node.js is unavailable.
 
-To share the project, `python scripts/make_package.py` builds
-`dist/arcgis-uploader-<date>.zip` — an emailable package of just the source,
-tests, docs and lockfile. It includes files by allowlist, so `.env`
-(credentials), `.venv` and caches can never end up in it.
+The packaging scripts produce separate artifacts for separate audiences:
+
+```powershell
+# Source handoff for another developer
+python scripts/make_source_package.py
+
+# Runtime server release plus the small iframe integration package
+python scripts/make_release.py
+```
+
+The first command writes `dist/arcgis-uploader-source-<date>.zip`. The release
+command writes `dist/arcgis-uploader-server-<date>.zip` and
+`dist/arcgis-uploader-embed-<date>.zip`. The server archive omits tests,
+developer scripts and repository files. The embed archive contains only the
+iframe instructions and HTML/Blazor examples for the parent application.
+
+All three archives use allowlists. `.env` credentials, `.venv`, caches and
+compiled Python files cannot enter them.
 
 ## Configuration
 

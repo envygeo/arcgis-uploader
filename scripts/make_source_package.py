@@ -1,10 +1,12 @@
-"""Build an emailable deploy package: dist/arcgis-uploader-YYYYMMDD.zip
+"""Build an emailable source package.
 
-Files are picked by ALLOWLIST, not by excluding patterns, so local state —
-.env (credentials!), .venv, __pycache__, .pytest_cache, dist — can never
+Output: dist/arcgis-uploader-source-YYYYMMDD.zip
+
+Files are picked by ALLOWLIST, not by excluding patterns, so local state,
+.env (credentials!), .venv, __pycache__, .pytest_cache, dist, can never
 leak into a package that is about to leave the building.
 
-Usage:  python scripts/make_package.py        (stdlib only, no deps)
+Usage:  python scripts/make_source_package.py        (stdlib only, no deps)
 """
 from __future__ import annotations
 
@@ -56,7 +58,7 @@ def gather() -> list[Path]:
 def main() -> None:
     out_dir = ROOT / "dist"
     out_dir.mkdir(exist_ok=True)
-    out = out_dir / f"arcgis-uploader-{date.today():%Y%m%d}.zip"
+    out = out_dir / f"arcgis-uploader-source-{date.today():%Y%m%d}.zip"
     files = gather()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for file in files:
