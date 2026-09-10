@@ -40,6 +40,27 @@ input[type="text"] {
   border-radius: 6px;
 }
 
+.upload-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+}
+.upload-meta .field {
+  display: flex;
+  align-items: baseline;
+  gap: .35rem;
+}
+.upload-meta .field:last-child { margin-left: auto; }
+.upload-meta input[type="text"] {
+  width: 10rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+}
+.upload-meta .field:last-child input { width: 13rem; }
+
 #drop-zone {
   border: 2px dashed var(--border);
   border-radius: 8px;
@@ -93,12 +114,7 @@ td.null { color: #b0bec5; }
 }
 
 #result.ok { background: var(--ok-bg); border-color: var(--ok-edge); }
-#result.err {
-  background: var(--err-bg);
-  border-color: var(--err-edge);
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
+#result.err { background: var(--err-bg); border-color: var(--err-edge); }
 #result ul { margin: .5rem 0 0; padding-left: 1.25rem; }
 .banner {
   background: #fff8e1;
