@@ -14,13 +14,14 @@ session state, credentials, and local experiments out of git.
 | `.claude/settings.json` | Yes | Repository-scoped Beads session hook only; no user preferences or secrets. |
 | `.codex/config.toml` | Yes | Enables repository-scoped Codex hooks. |
 | `.codex/hooks.json` | Yes | Repository-scoped Beads context refresh hooks only. |
-| `.beads/README.md`, `.beads/config.yaml`, `.beads/metadata.json`, `.beads/hooks/`, `.beads/interactions.jsonl` | Yes | Shared issue-tracker configuration and audit/history files. |
+| `.beads/README.md`, `.beads/config.yaml`, `.beads/metadata.json`, `.beads/hooks/` | Yes | Shared issue-tracker configuration and hooks. |
 
 ## Keep private or generated
 
 | Path/pattern | Include? | Rationale |
 | --- | --- | --- |
 | `.env` | No | Local credentials and deployment endpoints. Use `.env.example` for safe defaults. |
+| `.beads/interactions.jsonl` | No | Generated interaction/audit log that some Beads versions still append to. Issue sync uses Dolt, not this file. |
 | `.venv/`, `.pytest_cache/`, `__pycache__/`, `dist/` | No | Generated local tooling/build artifacts. |
 | `.beads/embeddeddolt/`, `.beads/proxieddb/`, `.beads/.local_version`, `.beads/last-touched`, `.beads-credential-key` | No | Local Beads/Dolt database state, locks, timestamps, or credentials. |
 | `.agents/private/`, `.agents/tmp/` | No | Local-only agent experiments, scratch prompts, or private workflows. |
