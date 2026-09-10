@@ -315,7 +315,8 @@ class ArcGISClient:
             details = " ".join(err.get("details") or [])
             raise ArcGISError(
                 self._with_auth_context(
-                    f"{url}: {err.get('message', 'ArcGIS error')} {details}".strip()
+                    f"ArcGIS request failed: {err.get('message', 'ArcGIS error')} {details}".strip()
+                    + f"\nEndpoint: {url}"
                 )
             )
         return body
@@ -328,7 +329,7 @@ class ArcGISClient:
             identity = "anonymous user"
         else:
             identity = f"configured user {self.settings.username}"
-        return f"ArcGIS authentication attempted {identity}: {message}"
+        return f"{message}\nAccount attempted: {identity}"
 
 
 def windows_identity() -> str:

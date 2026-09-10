@@ -93,7 +93,12 @@ td.null { color: #b0bec5; }
 }
 
 #result.ok { background: var(--ok-bg); border-color: var(--ok-edge); }
-#result.err { background: var(--err-bg); border-color: var(--err-edge); }
+#result.err {
+  background: var(--err-bg);
+  border-color: var(--err-edge);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
 #result ul { margin: .5rem 0 0; padding-left: 1.25rem; }
 .banner {
   background: #fff8e1;

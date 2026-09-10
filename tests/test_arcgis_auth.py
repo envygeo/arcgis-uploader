@@ -119,7 +119,7 @@ def test_iwa_permission_error_reports_attempted_windows_identity(monkeypatch):
 
     message = str(exc_info.value)
     assert (
-        "ArcGIS authentication attempted Windows identity "
+        "Account attempted: Windows identity "
         "klondike\\jdoe / jdoe@example.gov" in message
     )
     assert "User does not have permissions" in message
@@ -136,9 +136,10 @@ def test_password_permission_error_reports_configured_username(monkeypatch):
         client.layer_info("https://maps.example.test/server/rest/services/x/FeatureServer/0")
 
     message = str(exc_info.value)
-    assert "ArcGIS authentication attempted configured user svc_user" in message
+    assert "Account attempted: configured user svc_user" in message
     assert "User does not have permissions" in message
     assert "secret" not in message
+    assert message.startswith("ArcGIS request failed: User does not have permissions")
 
 
 def test_anonymous_permission_error_reports_anonymous_user(monkeypatch):
@@ -150,5 +151,33 @@ def test_anonymous_permission_error_reports_anonymous_user(monkeypatch):
         client.layer_info("https://maps.example.test/server/rest/services/x/FeatureServer/0")
 
     message = str(exc_info.value)
-    assert "ArcGIS authentication attempted anonymous user" in message
+    assert "Account attempted: anonymous user" in message
     assert "User does not have permissions" in message
+
+
+def test_insert_error_leads_with_failure_not_authentication(monkeypatch):
+    client = ArcGISClient(make_settings(arcgis_auth_mode="password"))
+    monkeypatch.setattr(client, "token", lambda: "private-token")
+    monkeypatch.setattr(
+        client.session,
+        "post",
+        lambda *args, **kwargs: FakeResponse({
+            "error": {
+                "message": "Unable to complete operation.",
+                "details": [
+                    "Internal error during object insert.",
+                    "Invalid column value [yesab_id]",
+                ],
+            },
+        }),
+    )
+
+    with pytest.raises(ArcGISError) as exc_info:
+        client.add_features("https://example.test/FeatureServer/0", [{"attributes": {}}])
+
+    assert str(exc_info.value) == (
+        "ArcGIS request failed: Unable to complete operation. "
+        "Internal error during object insert. Invalid column value [yesab_id]\n"
+        "Endpoint: https://example.test/FeatureServer/0/addFeatures\n"
+        "Account attempted: configured user svc_user"
+    )
