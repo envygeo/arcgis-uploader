@@ -230,8 +230,15 @@ the target layer.
 
 - An editable hosted feature layer per geometry family (they can be three
   layers of one feature service). `Create` capability must be enabled.
-- A text field matching `PROJECT_ID_FIELD`, length ≥ 64, and one matching
-  `USERNAME_FIELD`, length ≥ 128.
+- A text field matching `PROJECT_ID_FIELD` (64 characters recommended), and one
+  matching `USERNAME_FIELD` (128 characters recommended). Shorter fields work
+  when the submitted values fit. Before inserting into each layer, the uploader
+  checks all outgoing text attributes against that layer's declared lengths and
+  returns HTTP 422 if a value is too long. Values are never silently truncated.
+  For example, a 9-character ID field cannot store `Q2026_0325` (10 characters).
+  The form's Project ID is written to this field; source file attributes and
+  filenames do not supply it. Check the intended ID rather than removing a
+  prefix just to make it fit.
 - When duplicate detection is enabled, the target layer must also support
   `Query` and contain `DUPLICATE_ID_FIELD` (usually the same field as
   `PROJECT_ID_FIELD`, or another configured id field such as `review_id`).

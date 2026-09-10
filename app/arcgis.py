@@ -24,6 +24,10 @@ class ArcGISError(RuntimeError):
     """ArcGIS request failed; message is safe to show to the user."""
 
 
+class ArcGISAttributeError(ArcGISError):
+    """Submitted attributes exceed the destination field limits."""
+
+
 class ArcGISClient:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -242,6 +246,9 @@ class ArcGISClient:
 
     # -- editing ------------------------------------------------------------------
     def add_features(self, layer_url: str, features: list[dict]) -> int:
+        if not features:
+            return 0
+        self.validate_attribute_lengths(layer_url, features)
         added = 0
         for start in range(0, len(features), CHUNK_SIZE):
             chunk = features[start : start + CHUNK_SIZE]
@@ -264,6 +271,28 @@ class ArcGISClient:
                 )
             added += len(results)
         return added
+
+    def validate_attribute_lengths(self, layer_url: str, features: list[dict]) -> None:
+        """Check the whole batch before inserting, preserving IDs without truncation."""
+        fields = {
+            field["name"].lower(): field
+            for field in self.layer_info(layer_url).get("fields") or []
+            if field.get("type") == "esriFieldTypeString"
+        }
+        for index, feature in enumerate(features, start=1):
+            for name, value in (feature.get("attributes") or {}).items():
+                field = fields.get(name.lower())
+                if field is None or not isinstance(value, str):
+                    continue
+                limit = field.get("length")
+                if isinstance(limit, int) and len(value) > limit:
+                    raise ArcGISAttributeError(
+                        f"Feature {index}: field '{field['name']}' allows at most "
+                        f"{limit} characters, but the submitted value has {len(value)}. "
+                        "Shorten the value or use a target field with sufficient capacity. "
+                        "Values are not truncated automatically. No features were sent "
+                        "to this layer."
+                    )
 
     def _where_equals(self, info: dict, field_name: str, value: str) -> str:
         field = next(

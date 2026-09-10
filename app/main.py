@@ -31,7 +31,7 @@ from pyproj import CRS
 from pyproj.exceptions import CRSError
 import requests
 
-from .arcgis import ArcGISClient, ArcGISError
+from .arcgis import ArcGISAttributeError, ArcGISClient, ArcGISError
 from .config import (
     ESRI_POINT,
     ESRI_POLYGON,
@@ -347,6 +347,8 @@ def _upload_request(
                 username, project_id, file.filename, exc,
             )
             raise HTTPException(409, str(exc)) from exc
+        except ArcGISAttributeError as exc:
+            raise HTTPException(422, str(exc)) from exc
         except ArcGISError as exc:
             logger.warning(
                 "append failed: user=%s project=%s file=%s: %s",

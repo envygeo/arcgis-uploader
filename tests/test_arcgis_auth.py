@@ -157,6 +157,7 @@ def test_anonymous_permission_error_reports_anonymous_user(monkeypatch):
 
 def test_insert_error_leads_with_failure_not_authentication(monkeypatch):
     client = ArcGISClient(make_settings(arcgis_auth_mode="password"))
+    client._layer_info["https://example.test/FeatureServer/0"] = {"fields": []}
     monkeypatch.setattr(client, "token", lambda: "private-token")
     monkeypatch.setattr(
         client.session,
