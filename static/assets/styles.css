@@ -90,8 +90,19 @@ button:disabled { opacity: .6; cursor: wait; }
 #map { height: 340px; border-radius: 8px; background: #dde4e8; }
 #preview { display: grid; gap: 1rem; }
 
-/* Muted until a file is dropped; the layout never jumps. */
-#preview.inactive { opacity: .55; filter: grayscale(35%); }
+/* _codex-unknown-model- on behalf of Matt Wilkie_ */
+.map-context { min-width: 0; margin: 0; padding: .75rem; border: 1px solid var(--border); border-radius: 6px; }
+.map-context legend { font-weight: 600; }
+.map-context-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .4rem; }
+.map-context-choices label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; font-weight: 400; }
+.map-context-opacity { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; font-size: .85rem; }
+.map-context-opacity input { flex: 1; min-width: 5rem; max-width: 12rem; }
+.map-context-status { margin: .5rem 0 0; color: #795200; font-size: .85rem; }
+.map-context-status:empty { display: none; }
+.map-context button { margin-top: .5rem; font-size: .85rem; padding: .4rem .65rem; }
+
+/* Keep context usable before a file is dropped. _codex-unknown-model- on behalf of Matt Wilkie_ */
+#preview.inactive > :not(#map):not(.map-context) { opacity: .55; filter: grayscale(35%); }
 th.added, td.added { background: var(--ok-bg); }
 th.added { color: var(--ok-edge); }
 th.removed { text-decoration: line-through; color: var(--err-edge); background: var(--err-bg); }

@@ -13,18 +13,20 @@
   sends the same File object twice. A port to MudBlazor/Leaflet/React needs
   only those two multipart POSTs; everything else here is presentation.
 
-  The map is Leaflet from a CDN. For an intranet deployment, download
-  leaflet.js/leaflet.css into static/ and change the two URLs below.
-  BASEMAP_URL (optional, via /api/info) is an XYZ tile template; an ArcGIS
-  tiled MapServer works directly:  .../MapServer/tile/{z}/{y}/{x}
+  Leaflet and Esri Leaflet are bundled locally. Public Yukon basemap and
+  mining context are added by assets/preview-context.js. BASEMAP_URL optionally
+  overrides the basemap with a Web Mercator XYZ tile template.
+  _codex-unknown-model- on behalf of Matt Wilkie_
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Project geometry uploader — preview</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="assets/leaflet.css">
+  <script src="assets/leaflet.js"></script>
+  <script src="assets/esri-leaflet.js"></script>
+  <script src="assets/preview-context.js"></script>
   <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -127,9 +129,8 @@
 
   function ensureMap() {
     if (map) return;
-    map = L.map("map").setView([63.5, -135.5], 4);  // adjust for your region
-    if (serverInfo && serverInfo.basemap_url)
-      L.tileLayer(serverInfo.basemap_url, { maxZoom: 19 }).addTo(map);
+    map = L.map("map", { minZoom: 5, maxZoom: 18 }).setView([63.5, -135.5], 5);
+    window.addPreviewContext(map, serverInfo || {});
   }
 
   function renderEmptyState() {

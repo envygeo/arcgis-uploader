@@ -30,6 +30,11 @@ def test_release_builder_separates_server_and_embed_files(tmp_path: Path) -> Non
 
     assert "app/main.py" in server_names
     assert "static/example3.html" in server_names
+    for asset in (
+        "preview-context.js", "esri-leaflet.js", "esri-leaflet-LICENSE.txt",
+        "leaflet.js", "leaflet.css", "leaflet-LICENSE.txt",
+    ):
+        assert f"static/assets/{asset}" in server_names
     assert "pyproject.toml" in server_names
     assert "uv.lock" in server_names
     assert "LICENSE" in server_names

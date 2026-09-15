@@ -49,6 +49,7 @@ class Settings:
     default_source_epsg: int | None
     dry_run: bool
     basemap_url: str = ""  # optional XYZ tile template for the preview map
+    basemap_attribution: str = ""
     username_field: str = "uploaded_by"
     # Header carrying the authenticated user, set by the SSO/reverse proxy in
     # front of this app. Browsers cannot (and must not) supply it themselves.
@@ -115,6 +116,7 @@ def load_settings() -> Settings:
         default_source_epsg=int(default_epsg) if default_epsg else None,
         dry_run=os.environ.get("DRY_RUN", "").strip().lower() in ("1", "true", "yes"),
         basemap_url=os.environ.get("BASEMAP_URL", "").strip(),
+        basemap_attribution=os.environ.get("BASEMAP_ATTRIBUTION", "").strip(),
         username_field=os.environ.get("USERNAME_FIELD", "uploaded_by").strip(),
         username_header=os.environ.get("USERNAME_HEADER", "X-Forwarded-User").strip(),
         allow_client_username=os.environ.get("ALLOW_CLIENT_USERNAME", "true")

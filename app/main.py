@@ -170,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "max_upload_mb": settings.max_upload_mb,
             "dry_run": settings.dry_run,
             "basemap_url": settings.basemap_url,
+            "basemap_attribution": settings.basemap_attribution,
             "username_field": settings.username_field,
             "duplicate_detection": settings.duplicate_detection,
             "duplicate_id_field": settings.duplicate_id_field

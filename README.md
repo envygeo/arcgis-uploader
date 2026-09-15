@@ -341,6 +341,11 @@ Successful response (`200`):
 
 ### Example 2: preview, then confirm append
 
+Examples 2-4 include a Yukon topographic basemap and four mining context
+controls, with automatic 1M/50k claims detail switching. See
+[Preview background maps](docs/preview-context.md) for layer IDs, scale ranges,
+basemap overrides and network requirements.
+
 Use `/example2` or `/preview` when the client should show a map and attribute
 preview before appending. Example 2 adds one request before the Example 1
 `/api/upload` confirmation request:

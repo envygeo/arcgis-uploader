@@ -73,8 +73,12 @@ The iframe page is `/example3`. Its required application endpoints are:
 - `POST /api/preview`
 - `POST /api/upload`
 
-Example 3 also loads Leaflet 1.9.4 from `unpkg.com`. If the server or browsers
-cannot reach that CDN, vendor Leaflet locally before deployment.
+Examples 2-4 bundle Leaflet and Esri Leaflet under `static/assets/`. Their
+background maps require browser HTTPS access to `mapservices.gov.yk.ca` for
+the public Yukon topographic basemap and mining map exports. Four context
+toggles include automatic 1M/50k claims detail and opacity. Background errors
+do not block preview/upload. `BASEMAP_URL` optionally overrides the basemap
+with Web Mercator XYZ tiles; set `BASEMAP_ATTRIBUTION` for that provider.
 
 ## Identity
 
