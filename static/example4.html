@@ -166,8 +166,7 @@
 
   function ensureMap() {
     if (map) return;
-    map = L.map("map", { minZoom: 5, maxZoom: 18 }).setView([63.5, -135.5], 5);
-    window.addPreviewContext(map, serverInfo || {});
+    map = window.createPreviewMap("map", serverInfo);
   }
 
   function renderEmptyState() {

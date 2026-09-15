@@ -1,0 +1,29 @@
+{
+  "basemap": {
+    "url": "https://mapservices.gov.yk.ca/arcgis/rest/services/Yukon_Basemap_Cache/MapServer",
+    "type": "dynamic_map",
+    "source": "built-in default",
+    "attribution": "",
+    "attribution_source": "service metadata",
+    "opacity": 1
+  },
+  "context": {
+    "url": "https://mapservices.gov.yk.ca/arcgis/rest/services/GeoYukon/GY_Mining/MapServer",
+    "source": "built-in default",
+    "opacity": 0.65,
+    "scale_visibility": "service-defined (paired 1M/50k claims)",
+    "groups": [
+      { "name": "Quartz claims", "ids": [35, 36], "enabled": true },
+      { "name": "Placer claims", "ids": [10, 11], "enabled": true },
+      { "name": "Quartz land use permits", "ids": [39], "enabled": true },
+      { "name": "Placer land use permits", "ids": [16], "enabled": true }
+    ]
+  },
+  "view": {
+    "center": [63.5, -135.5],
+    "zoom": 5,
+    "min_zoom": 5,
+    "max_zoom": 18
+  },
+  "request_timeout_ms": 15000
+}

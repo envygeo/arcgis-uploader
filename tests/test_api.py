@@ -190,6 +190,8 @@ def test_debug_info_reports_effective_settings_without_secrets(monkeypatch):
         "SHAPE_RESTORE_SHX",
         "DRY_RUN",
         "BASEMAP_URL",
+        "BASEMAP_ATTRIBUTION",
+        "PREVIEW_MAP",
     }
     assert body["PORTAL_URL"] == "https://portal.example.test/arcgis"
     assert body["ARCGIS_AUTH_MODE"] == "iwa"

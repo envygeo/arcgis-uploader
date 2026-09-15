@@ -4,6 +4,30 @@ Examples 2, 3 and 4 share `static/assets/preview-context.js`. The upload and
 duplicate-check pipelines are unchanged. No portal login or editing token is
 used for background maps.
 
+## Effective settings and debug-info
+
+`app/preview-map.json` is the single source of built-in map defaults.
+`app/preview_config.py` resolves the basemap override, and `/api/info` supplies
+that effective `preview_map` configuration to the browser. The browser no longer
+keeps a separate set of map URLs, layer IDs, opacity, initial-view, zoom-limit
+or timeout defaults.
+
+`/api/debug-info` includes the same configuration as `PREVIEW_MAP`, with URL
+credentials redacted. `BASEMAP_URL` still shows the supplied override, including
+an empty string when none was supplied. `PREVIEW_MAP.basemap.url` shows what
+will actually be used, alongside its type and source (`built-in default` or
+`BASEMAP_URL override`). Attribution from the service is identified as
+`service metadata`, not guessed or fetched by debug-info. Configured attribution
+HTML is omitted from debug output because its links may contain credentials;
+`BASEMAP_ATTRIBUTION.set` and the effective attribution source show whether it
+is supplied and used.
+
+These are the effective startup settings, not browser-local changes made later
+with the checkboxes, opacity slider or map navigation. Existing server settings
+also report their resolved values (for example the duplicate-ID fallback to the
+project-ID field). Restart the server and refresh Preview after changing defaults
+or environment configuration.
+
 ## Default layers
 
 The basemap is the public
@@ -59,6 +83,6 @@ to the upload pipeline.
   Failed imagery is hidden. Use **Retry background maps** to reload; previewing
   and appending remain available during a background outage.
 - Public services can change layer IDs or availability. If they change, update
-  the fixed layer mapping in `preview-context.js` and its tests.
+  the fixed layer mapping in `app/preview-map.json` and its tests.
 
 Implementation reference: [Esri Leaflet dynamic map layer](https://developers.arcgis.com/esri-leaflet/api-reference/esri-leaflet/dynamic-map-layer/).

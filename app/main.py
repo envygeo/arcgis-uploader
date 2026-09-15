@@ -44,6 +44,7 @@ from .duplicates import count_duplicate_shapes
 from .esri import to_esri_geometry
 from .ingest import ACCEPTED_UPLOADS, GeometryBuckets, IngestError, collect_geometries
 from .preview import build_preview
+from .preview_config import preview_map_config
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 OAUTH_REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"
@@ -96,6 +97,11 @@ def _sanitize_debug_url(value: str) -> str:
 
 def _debug_settings(settings: Settings) -> dict[str, object]:
     """Return the effective public configuration as an explicit allowlist."""
+    preview_map = preview_map_config(settings)
+    for section in ("basemap", "context"):
+        preview_map[section]["url"] = _sanitize_debug_url(preview_map[section]["url"])
+    if preview_map["basemap"]["attribution"]:
+        preview_map["basemap"]["attribution"] = "[configured HTML omitted]"
     return {
         "PORTAL_URL": _sanitize_debug_url(settings.portal_url),
         "ARCGIS_AUTH_MODE": settings.arcgis_auth_mode,
@@ -131,6 +137,8 @@ def _debug_settings(settings: Settings) -> dict[str, object]:
         "SHAPE_RESTORE_SHX": settings.shape_restore_shx,
         "DRY_RUN": settings.dry_run,
         "BASEMAP_URL": _sanitize_debug_url(settings.basemap_url),
+        "BASEMAP_ATTRIBUTION": {"set": bool(settings.basemap_attribution)},
+        "PREVIEW_MAP": preview_map,
     }
 
 
@@ -171,6 +179,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "dry_run": settings.dry_run,
             "basemap_url": settings.basemap_url,
             "basemap_attribution": settings.basemap_attribution,
+            "preview_map": preview_map_config(settings),
             "username_field": settings.username_field,
             "duplicate_detection": settings.duplicate_detection,
             "duplicate_id_field": settings.duplicate_id_field

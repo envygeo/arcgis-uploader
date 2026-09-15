@@ -29,6 +29,8 @@ def test_release_builder_separates_server_and_embed_files(tmp_path: Path) -> Non
         deploy_readme = server_zip.read("DEPLOY.md").decode("utf-8")
 
     assert "app/main.py" in server_names
+    assert "app/preview-map.json" in server_names
+    assert "app/preview_config.py" in server_names
     assert "static/example3.html" in server_names
     for asset in (
         "preview-context.js", "esri-leaflet.js", "esri-leaflet-LICENSE.txt",

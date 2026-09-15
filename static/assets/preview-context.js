@@ -2,17 +2,17 @@
 (function () {
   "use strict";
 
-  const ROOT = "https://mapservices.gov.yk.ca/arcgis/rest/services/";
-  const MINING = ROOT + "GeoYukon/GY_Mining/MapServer";
-  const BASEMAP = ROOT + "Yukon_Basemap_Cache/MapServer";
-  const GROUPS = [
-    { name: "Quartz claims", ids: [35, 36] },
-    { name: "Placer claims", ids: [10, 11] },
-    { name: "Quartz land use permits", ids: [39] },
-    { name: "Placer land use permits", ids: [16] },
-  ];
+  window.createPreviewMap = function (container, info) {
+    const view = info.preview_map.view;
+    const map = L.map(container, { minZoom: view.min_zoom, maxZoom: view.max_zoom })
+      .setView(view.center, view.zoom);
+    window.addPreviewContext(map, info);
+    return map;
+  };
 
-  window.addPreviewContext = function (map, info = {}) {
+  window.addPreviewContext = function (map, info) {
+    const config = info.preview_map;
+    const groups = config.context.groups;
     const host = document.createElement("fieldset");
     host.className = "map-context";
     const legend = document.createElement("legend");
@@ -23,11 +23,11 @@
     const choices = document.createElement("div");
     choices.className = "map-context-choices";
     host.appendChild(choices);
-    const inputs = GROUPS.map(group => {
+    const inputs = groups.map(group => {
       const label = document.createElement("label");
       const input = document.createElement("input");
       input.type = "checkbox";
-      input.checked = true;
+      input.checked = group.enabled;
       label.append(input, document.createTextNode(group.name));
       choices.appendChild(label);
       return input;
@@ -40,9 +40,9 @@
     opacity.min = "0";
     opacity.max = "100";
     opacity.step = "5";
-    opacity.value = "65";
+    opacity.value = String(config.context.opacity * 100);
     const percent = document.createElement("output");
-    percent.textContent = "65%";
+    percent.textContent = opacity.value + "%";
     opacityLabel.append(document.createTextNode("Context opacity"), opacity, percent);
     host.appendChild(opacityLabel);
 
@@ -95,7 +95,7 @@
         clearTimeout(timer);
         tileFailed = false;
         report(name, "loading");
-        timer = setTimeout(failed, 15000);
+        timer = setTimeout(failed, config.request_timeout_ms);
       }
       function loaded(event) {
         if (event?.bounds && !event.bounds.equals(map.getBounds())) return;
@@ -120,16 +120,16 @@
 
     const canExport = typeof L.esri?.dynamicMapLayer === "function";
     let basemap;
-    if (info.basemap_url) {
-      basemap = L.tileLayer(info.basemap_url, {
-        pane: "previewBasemap", maxZoom: 18,
-        attribution: info.basemap_attribution || "",
+    if (config.basemap.type === "xyz_tiles") {
+      basemap = L.tileLayer(config.basemap.url, {
+        pane: "previewBasemap", maxZoom: config.view.max_zoom,
+        attribution: config.basemap.attribution, opacity: config.basemap.opacity,
       });
       watch(basemap, "Basemap", basemapPane, true);
     } else if (canExport) {
       basemap = L.esri.dynamicMapLayer({
-        url: BASEMAP, pane: "previewBasemap", opacity: 1,
-        format: "png32", transparent: false, timeout: 15000,
+        url: config.basemap.url, pane: "previewBasemap", opacity: config.basemap.opacity,
+        format: "png32", transparent: false, timeout: config.request_timeout_ms,
       });
       watch(basemap, "Basemap", basemapPane);
     } else {
@@ -151,16 +151,16 @@
         }
       });
       if (context) { context.remove(); context = null; }
-      const ids = GROUPS.flatMap((group, i) => inputs[i].checked ? group.ids : []);
+      const ids = groups.flatMap((group, i) => inputs[i].checked ? group.ids : []);
       if (!ids.length) { report("Mining context", "off"); return; }
       if (!canExport) {
         report("Mining context", "unavailable (map library did not load)");
         return;
       }
       context = L.esri.dynamicMapLayer({
-        url: MINING, layers: ids, pane: "previewContext",
+        url: config.context.url, layers: ids, pane: "previewContext",
         opacity: Number(opacity.value) / 100,
-        format: "png32", transparent: true, timeout: 15000,
+        format: "png32", transparent: true, timeout: config.request_timeout_ms,
       });
       stopContext = watch(context, "Mining context", contextPane);
       context.addTo(map);

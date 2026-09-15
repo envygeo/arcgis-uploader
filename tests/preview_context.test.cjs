@@ -4,8 +4,15 @@ const { test } = require("node:test");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const source = fs.readFileSync("static/assets/preview-context.js", "utf8");
+const defaults = JSON.parse(fs.readFileSync("app/preview-map.json", "utf8"));
 
 function setup(info = {}, missingPlugin = false) {
+  info.preview_map ||= structuredClone(defaults);
+  if (info.basemap_url) {
+    Object.assign(info.preview_map.basemap, {
+      url: info.basemap_url, type: "xyz_tiles", attribution: info.basemap_attribution || "",
+    });
+  }
   const elements = [];
   class Element {
     constructor(tag) { this.tag = tag; this.children = []; this.events = {}; this.style = {}; elements.push(this); }
@@ -54,13 +61,19 @@ function setup(info = {}, missingPlugin = false) {
   const env = {
     window: {},
     document: { createElement: tag => new Element(tag), createTextNode: text => ({ text }) },
-    L: { ImageOverlay, esri: missingPlugin ? undefined : { dynamicMapLayer: options => new Layer(options, false) },
+    L: { ImageOverlay,
+      map: (id, options) => {
+        map.options = options;
+        map.setView = (center, zoom) => { map.center = center; map.zoom = zoom; return map; };
+        return map;
+      },
+      esri: missingPlugin ? undefined : { dynamicMapLayer: options => new Layer(options, false) },
       tileLayer: (url, options) => new Layer({ ...options, url }, true) },
-    setTimeout: (fn, ms) => { assert.equal(ms, 15000); timers.set(++timerId, fn); return timerId; },
+    setTimeout: (fn, ms) => { assert.equal(ms, info.preview_map.request_timeout_ms); timers.set(++timerId, fn); return timerId; },
     clearTimeout: id => timers.delete(id),
   };
   vm.runInNewContext(source, env);
-  env.window.addPreviewContext(map, info);
+  env.window.createPreviewMap("map", info);
   return {
     map, layers, timers, ImageOverlay,
     inputs: elements.filter(e => e.type === "checkbox"),
@@ -74,6 +87,10 @@ function setup(info = {}, missingPlugin = false) {
 test("four logical controls use paired scale-dependent claims and only requested sublayers", () => {
   const s = setup();
   assert.equal(s.inputs.length, 4);
+  assert.equal(s.map.zoom, defaults.view.zoom);
+  assert.deepEqual(s.map.center, defaults.view.center);
+  assert.equal(s.map.options.minZoom, defaults.view.min_zoom);
+  assert.equal(s.map.options.maxZoom, defaults.view.max_zoom);
   assert.ok(s.inputs.every(input => input.checked));
   assert.equal(s.layers.length, 2);
   const [basemap, context] = s.layers;
@@ -93,6 +110,25 @@ test("four logical controls use paired scale-dependent claims and only requested
   }
   assert.equal(s.status.textContent, "");
   assert.equal(s.timers.size, 0);
+});
+
+test("browser consumes supplied configuration rather than hidden map defaults", () => {
+  const config = structuredClone(defaults);
+  config.view = { center: [61, -140], zoom: 8, min_zoom: 3, max_zoom: 16 };
+  config.context.opacity = 0.4;
+  config.context.url = "https://context.test/MapServer";
+  config.context.groups = [{ name: "Example", ids: [7, 8], enabled: true }];
+  config.request_timeout_ms = 2000;
+  const s = setup({ preview_map: config });
+  assert.deepEqual(s.map.center, [61, -140]);
+  assert.equal(s.map.zoom, 8);
+  assert.equal(s.map.options.maxZoom, 16);
+  assert.equal(s.inputs.length, 1);
+  assert.equal(s.output.textContent, "40%");
+  assert.equal(s.layers[1].options.url, "https://context.test/MapServer");
+  assert.deepEqual(Array.from(s.layers[1].options.layers), [7, 8]);
+  assert.equal(s.layers[1].options.opacity, 0.4);
+  assert.equal(s.layers[1].options.timeout, 2000);
 });
 
 test("toggles remove both claims scales, all-off removes overlay, stale events are ignored", () => {
