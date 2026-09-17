@@ -18,6 +18,7 @@ def test_preview_pages_use_shared_local_map_assets(client, name):
         assert f'"assets/{asset}"' in page.text
         assert client.get(f"/assets/{asset}").status_code == 200
     assert 'window.createPreviewMap("map", serverInfo)' in page.text
+    assert 'href="assets/styles.css?v=preview-overflow-1"' in page.text
     assert "L.tileLayer(serverInfo.basemap_url" not in page.text
     assert "https://unpkg.com" not in page.text
 
