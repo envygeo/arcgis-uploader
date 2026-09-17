@@ -22,6 +22,18 @@ def test_preview_pages_use_shared_local_map_assets(client, name):
     assert "https://unpkg.com" not in page.text
 
 
+def test_wide_preview_tables_are_contained_by_the_upload_card(client):
+    styles = client.get("/assets/styles.css").text
+
+    assert ".card > *," in styles
+    assert "#preview > *," in styles
+    assert "#tables {" in styles
+    assert ".table-wrap {" in styles
+    assert "max-width: 100%;" in styles
+    assert "overflow-x: auto;" in styles
+    assert "min-width: max-content;" in styles
+
+
 def test_basemap_attribution_configuration(monkeypatch):
     monkeypatch.setenv("BASEMAP_URL", " https://tiles.example.test/{z}/{x}/{y} ")
     monkeypatch.setenv("BASEMAP_ATTRIBUTION", " Example provider ")
