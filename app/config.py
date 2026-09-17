@@ -48,6 +48,9 @@ class Settings:
     max_upload_mb: int
     default_source_epsg: int | None
     dry_run: bool
+    # ArcGIS Map Viewer URL used after a successful append. The upload's
+    # project ID is added as the ``find`` query parameter.
+    result_map_url: str = ""
     basemap_url: str = ""  # optional XYZ tile template for the preview map
     basemap_attribution: str = ""
     username_field: str = "uploaded_by"
@@ -115,6 +118,7 @@ def load_settings() -> Settings:
         max_upload_mb=int(os.environ.get("MAX_UPLOAD_MB", "200")),
         default_source_epsg=int(default_epsg) if default_epsg else None,
         dry_run=os.environ.get("DRY_RUN", "").strip().lower() in ("1", "true", "yes"),
+        result_map_url=os.environ.get("RESULT_MAP_URL", "").strip(),
         basemap_url=os.environ.get("BASEMAP_URL", "").strip(),
         basemap_attribution=os.environ.get("BASEMAP_ATTRIBUTION", "").strip(),
         username_field=os.environ.get("USERNAME_FIELD", "uploaded_by").strip(),

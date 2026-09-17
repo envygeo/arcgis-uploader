@@ -17,6 +17,7 @@ from dataclasses import replace
 from pathlib import Path
 from urllib.parse import (
     parse_qs,
+    parse_qsl,
     unquote_plus,
     urlencode,
     urljoin,
@@ -95,6 +96,22 @@ def _sanitize_debug_url(value: str) -> str:
     )
 
 
+def _result_map_url(base_url: str, project_id: str) -> str:
+    """Add the uploaded project ID to a configured ArcGIS Map Viewer URL."""
+    if not base_url:
+        return ""
+    parts = urlsplit(base_url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key.lower() != "find"
+    ]
+    query.append(("find", project_id))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+
+
 def _debug_settings(settings: Settings) -> dict[str, object]:
     """Return the effective public configuration as an explicit allowlist."""
     preview_map = preview_map_config(settings)
@@ -136,6 +153,7 @@ def _debug_settings(settings: Settings) -> dict[str, object]:
         "DEFAULT_SOURCE_EPSG": settings.default_source_epsg,
         "SHAPE_RESTORE_SHX": settings.shape_restore_shx,
         "DRY_RUN": settings.dry_run,
+        "RESULT_MAP_URL": _sanitize_debug_url(settings.result_map_url),
         "BASEMAP_URL": _sanitize_debug_url(settings.basemap_url),
         "BASEMAP_ATTRIBUTION": {"set": bool(settings.basemap_attribution)},
         "PREVIEW_MAP": preview_map,
@@ -177,6 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "project_id_pattern": settings.project_id_pattern,
             "max_upload_mb": settings.max_upload_mb,
             "dry_run": settings.dry_run,
+            "result_map_url": settings.result_map_url,
             "basemap_url": settings.basemap_url,
             "basemap_attribution": settings.basemap_attribution,
             "preview_map": preview_map_config(settings),
@@ -634,6 +653,11 @@ def _append(
         "layers_read": buckets.layers,
         "features_appended": appended,
         "feature_layer_urls": feature_layer_urls,
+        "result_map_url": (
+            _result_map_url(settings.result_map_url, project_id)
+            if not settings.dry_run and sum(appended.values())
+            else ""
+        ),
         "features_skipped_no_target_layer": skipped_no_target,
         "features_skipped_invalid": buckets.skipped,
         "dry_run": settings.dry_run,

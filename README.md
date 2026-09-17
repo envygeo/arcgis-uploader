@@ -329,6 +329,7 @@ Successful response (`200`):
   "username_attribute_value": "Uploaded by KLONDIKE\\alex.",
   "layers_read": ["upload.zip:roads", "upload.zip:sites"],
   "features_appended": { "point": 12, "line": 340 },
+  "result_map_url": "https://example.com/portal/apps/mapviewer/index.html?webmap=0123456789abcdef0123456789abcdef&find=2026-0042",
   "feature_layer_urls": {
     "point": "https://maps.example.gov/server/rest/services/Hosted/Projects/FeatureServer/0",
     "line": "https://maps.example.gov/server/rest/services/Hosted/Projects/FeatureServer/1"
@@ -338,6 +339,12 @@ Successful response (`200`):
   "dry_run": false
 }
 ```
+
+When `RESULT_MAP_URL` is configured, `result_map_url` is returned only after a
+real append writes at least one feature. The server preserves the configured
+web map query and adds the submitted project ID as a URL-encoded `find`
+parameter. ArcGIS Map Viewer searches the web map's configured searchable
+fields and opens the first match, prompting the user to sign in when needed.
 
 ### Example 2: preview, then confirm append
 

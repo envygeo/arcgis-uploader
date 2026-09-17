@@ -349,22 +349,20 @@
   function showSummary(data) {
     const lines = Object.entries(data.features_appended)
       .map(([type, n]) => {
-        const url = data.feature_layer_urls?.[type];
-        const destination = url
-          ? ` - <a href="${escapeHtml(url)}" target="_blank" rel="noopener">view ${escapeHtml(type)} feature layer</a>`
-          : "";
         return `${n} ${type} feature(s)` +
-               (data.dry_run ? " (dry run — not written)" : " appended") +
-               destination;
+               (data.dry_run ? " (dry run — not written)" : " appended");
       });
     for (const [type, n] of Object.entries(data.features_skipped_no_target_layer))
       lines.push(`${n} ${type} feature(s) skipped — no target layer for this type`);
     if (data.features_skipped_invalid)
       lines.push(`${data.features_skipped_invalid} empty/unsupported geometries skipped`);
+    const mapLink = data.result_map_url
+      ? `<p><a href="${escapeHtml(data.result_map_url)}" target="_blank" rel="noopener">View uploaded features on the map</a></p>`
+      : "";
     showResult(true,
       `Done — project ID <strong>${escapeHtml(data.project_id)}</strong>, ` +
       `recorded as <strong>${escapeHtml(data.username_attribute_value || data.uploaded_by)}</strong>:` +
-      "<ul>" + lines.map(l => `<li>${l}</li>`).join("") + "</ul>");
+      "<ul>" + lines.map(l => `<li>${l}</li>`).join("") + "</ul>" + mapLink);
   }
 
   function showResult(ok, html) {

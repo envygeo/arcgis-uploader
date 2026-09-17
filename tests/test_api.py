@@ -15,7 +15,7 @@ from app.config import (
 )
 from app.duplicates import count_duplicate_shapes
 from app.ingest import GeometryBuckets
-from app.main import DuplicateAppendError, _append
+from app.main import DuplicateAppendError, _append, _result_map_url
 from tests.conftest import geojson_bytes, make_client, post_file
 
 
@@ -29,6 +29,7 @@ def test_geojson_upload_dry_run(client):
     body = response.json()
     assert body["features_appended"] == {"point": 1, "line": 1}
     assert body["feature_layer_urls"] == {}
+    assert body["result_map_url"] == ""
     assert body["dry_run"] is True
 
 
@@ -114,7 +115,7 @@ def test_example_pages_link_to_allowlisted_debug_info(client):
         assert "Show debug info" in response.text
 
 
-def test_example_pages_link_to_appended_feature_layers(client):
+def test_example_pages_link_to_result_map(client):
     for path in (
         "/example1.html",
         "/example2.html",
@@ -124,9 +125,21 @@ def test_example_pages_link_to_appended_feature_layers(client):
         response = client.get(path)
 
         assert response.status_code == 200
-        assert "data.feature_layer_urls?.[type]" in response.text
-        assert "view ${escapeHtml(type)} feature layer" in response.text
+        assert "data.result_map_url" in response.text
+        assert "View uploaded features on the map" in response.text
         assert 'target="_blank" rel="noopener"' in response.text
+
+
+def test_result_map_url_adds_encoded_find_and_replaces_existing_find():
+    url = _result_map_url(
+        "https://maps.example.test/view?webmap=abc&find=old#details",
+        "Project name / 2026-0042",
+    )
+
+    assert url == (
+        "https://maps.example.test/view?webmap=abc&find="
+        "Project+name+%2F+2026-0042#details"
+    )
 
 
 def test_debug_info_reports_effective_settings_without_secrets(monkeypatch):
@@ -146,6 +159,7 @@ def test_debug_info_reports_effective_settings_without_secrets(monkeypatch):
         max_upload_mb=25,
         default_source_epsg=3578,
         dry_run=False,
+        result_map_url="https://maps.example.test/view?webmap=abc",
         basemap_url="https://tiles.example.test/{z}/{y}/{x}",
         username_field="submitted_by",
         username_header="X-Authenticated-User",
@@ -189,6 +203,7 @@ def test_debug_info_reports_effective_settings_without_secrets(monkeypatch):
         "DEFAULT_SOURCE_EPSG",
         "SHAPE_RESTORE_SHX",
         "DRY_RUN",
+        "RESULT_MAP_URL",
         "BASEMAP_URL",
         "BASEMAP_ATTRIBUTION",
         "PREVIEW_MAP",
@@ -220,6 +235,7 @@ def test_debug_info_reports_effective_settings_without_secrets(monkeypatch):
     assert body["DEFAULT_SOURCE_EPSG"] == 3578
     assert body["SHAPE_RESTORE_SHX"] == "YES"
     assert body["DRY_RUN"] is False
+    assert body["RESULT_MAP_URL"] == "https://maps.example.test/view?webmap=abc"
     assert body["BASEMAP_URL"] == "https://tiles.example.test/{z}/{y}/{x}"
 
     serialized = json.dumps(body)
@@ -421,6 +437,7 @@ def test_append_adds_default_z_for_target_layer_with_z():
         max_upload_mb=10,
         default_source_epsg=None,
         dry_run=False,
+        result_map_url="https://maps.example.test/view?webmap=abc",
         duplicate_detection=False,
     )
     buckets = GeometryBuckets(
@@ -440,6 +457,9 @@ def test_append_adds_default_z_for_target_layer_with_z():
     assert result["feature_layer_urls"] == {
         "polygon": "https://example.test/layer/0"
     }
+    assert result["result_map_url"] == (
+        "https://maps.example.test/view?webmap=abc&find=2026-0042"
+    )
     geometry = client.features[0]["geometry"]
     assert client.features[0]["attributes"]["uploaded_by"] == "Uploaded by tester."
     assert geometry["hasZ"] is True
